@@ -1,0 +1,13 @@
+#archivos temporales
+__pycache__/
+*.pyc
+
+#posibles archivos del editor
+.sublime-project
+*.sublime-workspace
+.vscode/
+
+#archivos del OS
+.DS_Store
+Thumbs.db
+EOF
