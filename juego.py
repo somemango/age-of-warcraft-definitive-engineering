@@ -19,6 +19,7 @@ class Juego:
             for unidad in self.mis_unidades:
                 unidad.destinoX = mouse_x
                 unidad.destinoY = mouse_y
+                unidad.estado = "moviendose"
 
     def actualizar(self):
         for unidad in self.mis_unidades:
