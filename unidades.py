@@ -13,9 +13,12 @@ class Tropa:
         self.destinoY = y
         self.velocidad = 0.5
 
+        # esto sirve para saber si una unidad esta seleccionada en la seleccion multiple
+        self.seleccionada = False
+
     # aca se define el como se mueven las tropas
     def movimiento(self):
-        if (self.estado == "moviendose"):
+        if (self.estado == "moviendose" and self.seleccionada == True):
             print(f"Estado: {self.estado} | Pos actual: ({self.x}, {self.y}) | Destino: ({self.destinoX}, {self.destinoY})")
             # vectores necesarios para el calculo
             posicion_actual = pygame.math.Vector2(self.x, self.y)
