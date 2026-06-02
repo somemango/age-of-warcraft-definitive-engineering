@@ -35,8 +35,10 @@ class Estructura:
     def dibujar(self, pantalla, fuente):
         # Cuerpo del edificio
         color = self.COLOR_EDIFICIO if self.construida else (100, 100, 140)
-        pygame.draw.rect(pantalla, color, (self.x - 25, self.y - 25, 50, 50), border_radius=4)
-        pygame.draw.rect(pantalla, (200, 200, 255), (self.x - 25, self.y - 25, 50, 50), width=1, border_radius=4)
+        pygame.draw.rect(pantalla, color, (self.x - 25,
+                         self.y - 25, 50, 50), border_radius=4)
+        pygame.draw.rect(pantalla, (200, 200, 255), (self.x -
+                         25, self.y - 25, 50, 50), width=1, border_radius=4)
 
         # Etiqueta
         nombre = self.__class__.__name__
@@ -47,9 +49,11 @@ class Estructura:
         if not self.construida:
             barra_x = self.x - 25
             barra_y = self.y + 30
-            pygame.draw.rect(pantalla, self.COLOR_BARRA_FONDO, (barra_x, barra_y, 50, 6), border_radius=3)
+            pygame.draw.rect(pantalla, self.COLOR_BARRA_FONDO,
+                             (barra_x, barra_y, 50, 6), border_radius=3)
             ancho_progreso = int(50 * self.progreso / 100)
-            pygame.draw.rect(pantalla, self.COLOR_BARRA, (barra_x, barra_y, ancho_progreso, 6), border_radius=3)
+            pygame.draw.rect(pantalla, self.COLOR_BARRA, (barra_x,
+                             barra_y, ancho_progreso, 6), border_radius=3)
 
 
 # ----------------------------------------------------------------------
@@ -65,7 +69,7 @@ class Cuartel(Estructura):
         super().__init__(x, y, faccion, costo=150)
         self.cola = []                  # lista de nombres de tropa a entrenar
         self.timer_entrenamiento = 0    # frames transcurridos
-        self.tiempo_entrenamiento = 300 # frames por tropa (5 seg a 60fps)
+        self.tiempo_entrenamiento = 300  # frames por tropa (5 seg a 60fps)
 
     def encolar_tropa(self, tipo="basica"):
         self.cola.append(tipo)
@@ -121,5 +125,6 @@ class Granja(Estructura):
         if not self.construida:
             return
         if not self._bonus_aplicado:
-            juego.limite_tropas = getattr(juego, "limite_tropas", 10) + self.limite_extra
+            juego.limite_tropas = getattr(
+                juego, "limite_tropas", 10) + self.limite_extra
             self._bonus_aplicado = True

@@ -1,6 +1,7 @@
 import pygame
 import time  # Controlamos el tiempo de spawn de manera independiente a los FPS de pygame
 
+
 class Tropa:
     # Constructor de la tropa con el color de facción y las variables de espacio físico
     def __init__(self, x, y, faccion, vida, color):
@@ -8,21 +9,24 @@ class Tropa:
         self.y = y
         self.faccion = faccion
         self.vida = vida
-        self.color = color  # Guarda el color (verde para aliados, rojo para enemigos)
+        # Guarda el color (verde para aliados, rojo para enemigos)
+        self.color = color
         self.estado = "quieto"
         self.destinoX = x
         self.destinoY = y
         self.velocidad = 2
         self.radio = 15  # El tamaño del círculo, nos sirve para el render y colisiones
-        self.distancia_separacion = 45  # Espacio personal mínimo para que no se encimen las unidades
-        self.seleccionada = False  # Atributo para controlar si la unidad fue atrapada por el cuadro de selección
+        # Espacio personal mínimo para que no se encimen las unidades
+        self.distancia_separacion = 45
+        # Atributo para controlar si la unidad fue atrapada por el cuadro de selección
+        self.seleccionada = False
         # Nuevos atributos para tareas
         self.tarea = None               # None | "construir" | "recolectar"
         self.objetivo = None            # referencia a la Estructura destino
-        self.velocidad_construccion = 2 # puntos de progreso por frame al llegar
-
+        self.velocidad_construccion = 2  # puntos de progreso por frame al llegar
 
     # Algoritmo de Flocking/Separación básica para que avancen en grupo respetando su distancia
+
     def movimiento(self, todas_las_unidades):
         posicion_actual = pygame.math.Vector2(self.x, self.y)
         fuerza_separacion = pygame.math.Vector2(0, 0)
@@ -37,7 +41,8 @@ class Tropa:
                 # Si están muy pegadas, generamos un vector de empuje hacia el lado opuesto
                 if distancia < self.distancia_separacion and distancia > 0:
                     direccion_escape.normalize_ip()
-                    fuerza_separacion += direccion_escape * (self.distancia_separacion - distancia) * 0.15
+                    fuerza_separacion += direccion_escape * \
+                        (self.distancia_separacion - distancia) * 0.15
 
         if self.estado == "moviendose":
             destino = pygame.math.Vector2(self.destinoX, self.destinoY)
@@ -75,11 +80,13 @@ class Tropa:
     # Renderizado de la unidad
     def dibujar(self, pantalla):
         # Dibujamos el círculo base de la tropa
-        pygame.draw.circle(pantalla, self.color, (int(self.x), int(self.y)), self.radio)
-        
+        pygame.draw.circle(pantalla, self.color,
+                           (int(self.x), int(self.y)), self.radio)
+
         # Aro verde oscuro (0, 100, 0) y delgado para las unidades seleccionadas
         if self.seleccionada and self.faccion == "sistemas":
-            pygame.draw.circle(pantalla, (0, 100, 0), (int(self.x), int(self.y)), self.radio + 3, 1)
+            pygame.draw.circle(pantalla, (0, 100, 0), (int(
+                self.x), int(self.y)), self.radio + 3, 1)
 
 
 # Estructuras fijas del mapa que generan reclutas automáticamente
@@ -95,25 +102,29 @@ class Generador:
     # Controla el reloj del cooldown y clava el límite de población en 5 tropas vivas por bando
     def actualizar(self, lista_unidades):
         tiempo_actual = time.time()
-        unidades_faccion = [u for u in lista_unidades if u.faccion == self.faccion]
-        
+        unidades_faccion = [
+            u for u in lista_unidades if u.faccion == self.faccion]
+
         if len(unidades_faccion) < 5:
             if tiempo_actual - self.ultimo_spawn >= self.cooldown:
                 # MODIFICADO: Separamos el color de la unidad del color de la base.
                 # Si somos "sistemas", forzamos que la tropa nazca verde chillón (0, 255, 0) aunque el cuadrado sea oscuro.
-                color_tropa = (0, 255, 0) if self.faccion == "sistemas" else self.color
-                
-                nueva_tropa = Tropa(self.x, self.y, self.faccion, 100, color_tropa)
-                
+                color_tropa = (
+                    0, 255, 0) if self.faccion == "sistemas" else self.color
+
+                nueva_tropa = Tropa(
+                    self.x, self.y, self.faccion, 100, color_tropa)
+
                 # Si es la base enemiga, mandamos a los rojos a marchar a un punto cercano para que salgan del spawn
                 if self.faccion == "enemigos":
                     nueva_tropa.destinoX = 550
                     nueva_tropa.destinoY = 400
                     nueva_tropa.estado = "moviendose"
-                    
+
                 lista_unidades.append(nueva_tropa)
                 self.ultimo_spawn = tiempo_actual
 
     # Dibuja la estructura como un cuadrado de 60x60
     def dibujar(self, pantalla):
-        pygame.draw.rect(pantalla, self.color, (self.x - 30, self.y - 30, 60, 60))
+        pygame.draw.rect(pantalla, self.color,
+                         (self.x - 30, self.y - 30, 60, 60))

@@ -36,8 +36,10 @@ class Juego:
         self.fin_seleccion = (0, 0)
 
         # Generadores
-        self.generador_aliado = Generador(100, 100, "sistemas", (0, 125, 0), tiempo_generacion_segundos=3)
-        self.generador_enemigo = Generador(700, 500, "enemigos", (255, 0, 0), tiempo_generacion_segundos=3)
+        self.generador_aliado = Generador(
+            100, 100, "sistemas", (0, 125, 0), tiempo_generacion_segundos=3)
+        self.generador_enemigo = Generador(
+            700, 500, "enemigos", (255, 0, 0), tiempo_generacion_segundos=3)
 
         # Unidad inicial
         self.mis_unidades.append(Tropa(150, 150, "sistemas", 100, (0, 255, 0)))
@@ -120,7 +122,8 @@ class Juego:
         separacion = 8
 
         for i, nombre in enumerate(self.opciones_menu):
-            rect = pygame.Rect(menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
+            rect = pygame.Rect(
+                menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
             if rect.collidepoint(mx, my):
                 if self.oro >= COSTOS_EDIFICIO[nombre]:
                     self.edificio_seleccionado = nombre
@@ -218,7 +221,8 @@ class Juego:
             y = min(self.inicio_seleccion[1], self.fin_seleccion[1])
             ancho = abs(self.fin_seleccion[0] - self.inicio_seleccion[0])
             alto = abs(self.fin_seleccion[1] - self.inicio_seleccion[1])
-            pygame.draw.rect(self.pantalla, (0, 255, 0), pygame.Rect(x, y, ancho, alto), 1)
+            pygame.draw.rect(self.pantalla, (0, 255, 0),
+                             pygame.Rect(x, y, ancho, alto), 1)
 
         # Preview del edificio a colocar
         if self.edificio_seleccionado:
@@ -237,7 +241,8 @@ class Juego:
         superficie.fill((255, 255, 255, 60))
         pygame.draw.rect(superficie, (200, 200, 255, 120), (0, 0, 60, 60), 2)
         self.pantalla.blit(superficie, (px - 30, py - 30))
-        texto = self.fuente.render(self.edificio_seleccionado, True, (220, 220, 255))
+        texto = self.fuente.render(
+            self.edificio_seleccionado, True, (220, 220, 255))
         self.pantalla.blit(texto, (px - texto.get_width() // 2, py - 50))
 
     def _dibujar_menu(self):
@@ -250,27 +255,33 @@ class Juego:
         fondo.fill((20, 20, 40, 200))
         self.pantalla.blit(fondo, (menu_x - 5, menu_y - 5))
 
-        titulo = self.fuente_grande.render("Construir (B)", True, (200, 200, 255))
+        titulo = self.fuente_grande.render(
+            "Construir (B)", True, (200, 200, 255))
         self.pantalla.blit(titulo, (menu_x, menu_y - 28))
 
         for i, nombre in enumerate(self.opciones_menu):
-            rect = pygame.Rect(menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
+            rect = pygame.Rect(
+                menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
             costo = COSTOS_EDIFICIO[nombre]
             puede_pagar = self.oro >= costo
             color_fondo = (40, 80, 40) if puede_pagar else (80, 40, 40)
             color_borde = (100, 200, 100) if puede_pagar else (200, 100, 100)
 
             pygame.draw.rect(self.pantalla, color_fondo, rect, border_radius=6)
-            pygame.draw.rect(self.pantalla, color_borde, rect, width=1, border_radius=6)
+            pygame.draw.rect(self.pantalla, color_borde,
+                             rect, width=1, border_radius=6)
 
             texto_nombre = self.fuente.render(nombre, True, (230, 230, 230))
-            texto_costo = self.fuente.render(f"{costo} oro", True, (200, 180, 80))
+            texto_costo = self.fuente.render(
+                f"{costo} oro", True, (200, 180, 80))
             self.pantalla.blit(texto_nombre, (rect.x + 8, rect.y + 5))
             self.pantalla.blit(texto_costo, (rect.x + 8, rect.y + 20))
 
     def _dibujar_hud(self):
-        txt_oro = self.fuente_grande.render(f"Oro: {int(self.oro)}", True, (255, 215, 0))
-        self.pantalla.blit(txt_oro, (self.pantalla.get_width() - txt_oro.get_width() - 10, 10))
+        txt_oro = self.fuente_grande.render(
+            f"Oro: {int(self.oro)}", True, (255, 215, 0))
+        self.pantalla.blit(
+            txt_oro, (self.pantalla.get_width() - txt_oro.get_width() - 10, 10))
 
         instrucciones = [
             "B - menu construccion",
@@ -279,4 +290,5 @@ class Juego:
         ]
         for j, linea in enumerate(instrucciones):
             txt = self.fuente.render(linea, True, (180, 180, 180))
-            self.pantalla.blit(txt, (self.pantalla.get_width() - txt.get_width() - 10, 40 + j * 20))
+            self.pantalla.blit(
+                txt, (self.pantalla.get_width() - txt.get_width() - 10, 40 + j * 20))

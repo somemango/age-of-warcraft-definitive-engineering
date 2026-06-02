@@ -23,13 +23,15 @@ ARBOLES = {
             "nombre": "Compilador optimizado",
             "costo": 200,
             "requiere": "algoritmo_eficiente",
-            "efecto": lambda juego: setattr(juego, "mod_entrena", 1.43),  # +30% velocidad
+            # +30% velocidad
+            "efecto": lambda juego: setattr(juego, "mod_entrena", 1.43),
         },
         "red_distribuida": {
             "nombre": "Red distribuida",
             "costo": 300,
             "requiere": "algoritmo_eficiente",
-            "efecto": lambda juego: setattr(juego, "mod_oro", 1.5),       # +50% oro
+            # +50% oro
+            "efecto": lambda juego: setattr(juego, "mod_oro", 1.5),
         },
     },
     "hardware": {
