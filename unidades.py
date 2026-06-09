@@ -24,6 +24,58 @@ class Tropa:
         self.tarea = None               # None | "construir" | "recolectar"
         self.objetivo = None            # referencia a la Estructura destino
         self.velocidad_construccion = 2  # puntos de progreso por frame al llegar
+        # atributos para el ataque de las unidades
+        self.dano = 10
+        self.rango_ataque = 45
+        self.cooldown_ataque = 60
+        self.timer_ataque = 0
+        self.objetivo_combate = None
+
+    def buscar_enemigo_mas_cercano(self, todas_las_unidades):
+        enemigo_mas_cercano = None
+        distancia_minima = float('inf')
+        pos_actual = pygame.math.Vector2(self.x, self.y)
+
+        for otra in todas_las_unidades:
+            # si es de otra faccion y tiene vida:
+            if otra.faccion != self.faccion and otra.vida > 0:
+                pos_otra = pygame.math.Vector2(otra.x, otra.y)
+                distancia = (pos_actual - pos_otra).length()
+                if distancia < distancia_minima:
+                    distancia_minima = distancia
+                    enemigo_mas_cercano = otra
+
+        return enemigo_mas_cercano
+
+    def atacar(self, todas_las_unidades):
+        # manejo del temporizador de ataque (cooldown)
+        if self.timer_ataque > 0:
+            self.timer_ataque -= 1
+
+        # si no tiene objetivo manual o el objetivo ya murio, vuelve a estar quieto
+        if self.objetivo_combate is None or self.objetivo_combate.vida <= 0:
+            self.objetivo_combate = None
+            self.estado = "quieto"
+            return
+
+        # calcular distancias vectoriales hacia el objetivo asignado
+        pos_actual = pygame.math.Vector2(self.x, self.y)
+        pos_enemigo = pygame.math.Vector2(self.objetivo_combate.x, self.objetivo_combate.y)
+        direccion = pos_enemigo - pos_actual
+        distancia = direccion.length()
+
+        # si esta lejos lo persigue
+        if distancia > self.rango_ataque:
+            self.destinoX = self.objetivo_combate.x
+            self.destinoY = self.objetivo_combate.y
+            # forzamos que se traslade hacia alla
+            self.estado = "moviendose" 
+        else:
+            # si esta en rango se detiene a atacar y empieza el cooldown
+            if self.timer_ataque == 0:
+                self.objetivo_combate.vida -= self.dano
+                self.timer_ataque = self.cooldown_ataque
+                print(f"¡Golpe manual! Vida del enemigo: {self.objetivo_combate.vida}")
 
     # Algoritmo de Flocking/Separación básica para que avancen en grupo respetando su distancia
 
@@ -88,6 +140,19 @@ class Tropa:
             pygame.draw.circle(pantalla, (0, 100, 0), (int(
                 self.x), int(self.y)), self.radio + 3, 1)
 
+        # barra de vida
+        if self.vida < 100:
+            ancho_barra = 20
+            bx = int(self.x) - ancho_barra // 2
+            by = int(self.y) - self.radio - 6
+
+            # Fondo rojo oscuro
+            pygame.draw.rect(pantalla, (100, 0, 0), (bx, by, ancho_barra, 4))
+
+            # Barra verde que se encoge con la vida actual
+            ancho_verde = int(ancho_barra * (self.vida / 100))
+            if ancho_verde > 0:
+                pygame.draw.rect(pantalla, (0, 255, 0), (bx, by, ancho_verde, 4))
 
 # Estructuras fijas del mapa que generan reclutas automáticamente
 class Generador:

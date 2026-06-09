@@ -20,7 +20,7 @@ class Juego:
     def __init__(self, pantalla):
         self.pantalla = pantalla
         self.oro = 300
-        self.faccion = "sistemas"  # <-- faltaba esta línea
+        self.faccion = "sistemas"
 
         self.mis_unidades = []
         self.estructuras = []
@@ -115,6 +115,33 @@ class Juego:
                         unidad.tarea = None
                         unidad.objetivo = None
 
+                mouse_x, mouse_y = event.pos
+                pos_clic = pygame.math.Vector2(mouse_x, mouse_y)
+
+                # 1. detectar si el jugador le hizo clic a un enemigo
+                enemigo_clicado = None
+                for unidad in self.mis_unidades:
+                    if unidad.faccion == "enemigos":  # si es del bando contrario
+                        pos_enemigo = pygame.math.Vector2(unidad.x, unidad.y)
+                        # si el clic cayo dentro del radio del círculo del enemigo
+                        if (pos_clic - pos_enemigo).length() <= unidad.radio:
+                            enemigo_clicado = unidad
+                            break
+
+                # 2. repartir la orden a las unidades seleccionadas
+                for unidad in self.mis_unidades:
+                    if unidad.faccion == "sistemas" and unidad.seleccionada:
+                        if enemigo_clicado is not None:
+                            # ORDEN MANUAL DE ATAQUE
+                            unidad.objetivo_combate = enemigo_clicado
+                            unidad.estado = "atacando"
+                        else:
+                            # ORDEN DE MOVIMIENTO NORMAL
+                            unidad.destinoX = mouse_x
+                            unidad.destinoY = mouse_y
+                            unidad.estado = "moviendose"
+                            unidad.objetivo_combate = None # olvida el objetivo anterior si se le ordena caminar
+
     def _click_menu(self, pos):
         mx, my = pos
         menu_x, menu_y = 10, 40
@@ -172,17 +199,36 @@ class Juego:
         self.generador_aliado.actualizar(self.mis_unidades)
         self.generador_enemigo.actualizar(self.mis_unidades)
 
+        # Filtro para mantener vivas solo a las unidades con salud
+        self.mis_unidades = [u for u in self.mis_unidades if u.vida > 0]
+
         for unidad in self.mis_unidades:
-            # Unidades nuevas heredan el destino del grupo si se estaba moviendo
+            # Si le ordenaste moverse colectivamente
             if unidad.faccion == "sistemas" and unidad.seleccionada:
                 if self.estado_actual_ordenado == "moviendose" and unidad.destinoX != self.ultimo_destino_x:
                     unidad.destinoX = self.ultimo_destino_x
                     unidad.destinoY = self.ultimo_destino_y
                     unidad.estado = "moviendose"
 
+            # 🛡️ IA DE AUTODEFENSA (Solo si está quieta y tú no le has dado órdenes manuales)
+            if unidad.estado == "quieto" and unidad.objetivo_combate is None:
+                enemigo_cercano = unidad.buscar_enemigo_mas_cercano(self.mis_unidades)
+                if enemigo_cercano:
+                    pos_u = pygame.math.Vector2(unidad.x, unidad.y)
+                    pos_e = pygame.math.Vector2(enemigo_cercano.x, enemigo_cercano.y)
+                    # Si el enemigo invade su espacio (100 píxeles), se defiende solo
+                    if (pos_u - pos_e).length() < 100:
+                        unidad.objetivo_combate = enemigo_cercano
+                        unidad.estado = "atacando"
+
+            if unidad.objetivo_combate is not None:
+                unidad.atacar(self.mis_unidades)
+
+            # Actualizaciones físicas por frame
             unidad.movimiento(self.mis_unidades)
             self._actualizar_tarea(unidad)
 
+        # Corregido: "estructura" en español para que coincida con el for
         for estructura in self.estructuras:
             estructura.actualizar(self)
 
@@ -213,6 +259,7 @@ class Juego:
 
         # Unidades
         for unidad in self.mis_unidades:
+            # Dibujamos el círculo base de la tropa
             unidad.dibujar(self.pantalla)
 
         # Cuadro de selección

@@ -1,7 +1,7 @@
 import pygame
+
 from juego import Juego
 
-# Inicialización limpia de Pygame. Todo el comportamiento pesado lo maneja la clase Juego
 pygame.init()
 pantalla = pygame.display.set_mode((800, 600))
 reloj = pygame.time.Clock()
@@ -20,6 +20,6 @@ while run:
     juego.dibujar()
     pygame.display.flip()
 
-    reloj.tick(60)  # Forzamos el bucle a correr a 60 FPS estables
+    reloj.tick(60)
 
 pygame.quit()
