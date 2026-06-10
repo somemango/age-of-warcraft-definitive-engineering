@@ -17,10 +17,11 @@ COSTOS_EDIFICIO = {
 
 
 class Juego:
-    def __init__(self, pantalla):
+    def __init__(self, pantalla, faccion_jugador, faccion_enemigo):
         self.pantalla = pantalla
         self.oro = 300
-        self.faccion = "sistemas"
+        self.faccion = faccion_jugador
+        self.faccion_enemigo = faccion_enemigo
 
         self.mis_unidades = []
         self.estructuras = []
@@ -55,18 +56,18 @@ class Juego:
         self.inicio_seleccion = (0, 0)
         self.fin_seleccion = (0, 0)
 
-        # Generadores (Colocamos al enemigo lejos, en la esquina inferior derecha del mapa gigante)
+        # Generadores configurados dinámicamente con las facciones elegidas
         self.generador_aliado = Generador(
-            100, 100, "sistemas", (0, 125, 0), tiempo_generacion_segundos=3)
+            100, 100, self.faccion, (0, 125, 0), tiempo_generacion_segundos=3)
         self.generador_enemigo = Generador(
-            2200, 1600, "enemigos", (255, 0, 0), tiempo_generacion_segundos=3)
+            2200, 1600, self.faccion_enemigo, (255, 0, 0), tiempo_generacion_segundos=3)
 
-        # Unidad inicial
+        # Unidad inicial usando la facción del jugador
         self.mis_unidades.append(
-            Tropa(150, 150, "sistemas", 100, (0, 255, 0)))
+            Tropa(150, 150, self.faccion, 100, (0, 255, 0)))
 
         # Inicializar árbol de habilidades
-        self.habilidades = ArbolHabilidades("sistemas", self)
+        self.habilidades = ArbolHabilidades(self.faccion, self)
 
         # Fuentes
         self.fuente = pygame.font.SysFont(None, 20)
@@ -128,7 +129,7 @@ class Juego:
                 es_clic_simple = (x_max - x_min < 5) and (y_max - y_min < 5)
 
                 for u in self.mis_unidades:
-                    if u.faccion == "sistemas":
+                    if u.faccion == self.faccion:
                         if es_clic_simple:
                             # Clic simple: medimos distancia con el radio de la unidad
                             dist = ((u.x - x_min) ** 2 + (u.y - y_min) ** 2) ** 0.5
@@ -150,7 +151,7 @@ class Juego:
 
             # 1. Chequear si hicimos clic sobre un enemigo
             for unidad in self.mis_unidades:
-                if unidad.faccion == "enemigos" and unidad.vida > 0:
+                if unidad.faccion == self.faccion_enemigo and unidad.vida > 0:
                     distancia = pygame.math.Vector2(mundo_x - unidad.x, mundo_y - unidad.y).length()
                     if distancia <= unidad.radio:
                         objetivo_enemigo = unidad
@@ -204,13 +205,13 @@ class Juego:
                     ClaseEstructura = TIPOS_EDIFICIO[nombre]
 
                     # 🆕 Colocamos la estructura ("los cimientos") en el mapa
-                    nueva_est = ClaseEstructura(self.ultimo_destino_x, self.ultimo_destino_y, "sistemas")
+                    nueva_est = ClaseEstructura(self.ultimo_destino_x, self.ultimo_destino_y, self.faccion)
                     self.estructuras.append(nueva_est)
                     print(f"Comprado {nombre}. Oro restante: {self.oro}")
 
                     # 🆕 Mandamos a los obreros seleccionados a construir
                     for u in self.mis_unidades:
-                        if u.seleccionada and u.faccion == "sistemas":
+                        if u.seleccionada and u.faccion == self.faccion:
                             u.objetivo = nueva_est
                             u.tarea = "construir"
                             u.destinoX = nueva_est.x
@@ -229,11 +230,11 @@ class Juego:
 
         # ⚔️ Lógica maestra
         for unidad in self.mis_unidades:
-            if unidad.faccion == "sistemas":
+            if unidad.faccion == self.faccion:
                 # Tus tropas solo hacen lo que tú les ordenes
                 unidad.ejecutar_tareas(self.mis_unidades)
             else:
-                # Los enemigos (rojos) tienen IA automática: buscan y atacan
+                # Los enemigos tienen IA automática: buscan y atacan
                 enemigo = unidad.buscar_enemigo_mas_cercano(self.mis_unidades)
                 if enemigo:
                     unidad.tarea = "atacar"
@@ -275,7 +276,7 @@ class Juego:
                 pygame.draw.circle(self.pantalla, u.color, (screen_x, screen_y), u.radio)
 
                 # Dibujamos el anillo circular blanco si la unidad está seleccionada
-                if u.seleccionada and u.faccion == "sistemas":
+                if u.seleccionada and u.faccion == self.faccion:
                     pygame.draw.circle(self.pantalla, (255, 255, 255), (screen_x, screen_y), u.radio + 2, 1)
 
         # 5. Dibujamos el cuadro blanco de arrastre visual (si el jugador está seleccionando)
@@ -334,3 +335,7 @@ class Juego:
     def _dibujar_hud(self):
         txt_oro = self.fuente_grande.render(f"Oro: {int(self.oro)}", True, (255, 215, 0))
         self.pantalla.blit(txt_oro, (20, 20))
+
+        txt_facciones = self.fuente.render(
+            f"{self.faccion.capitalize()} vs {self.faccion_enemigo.capitalize()}", True, (255, 255, 255))
+        self.pantalla.blit(txt_facciones, (20, 48))
