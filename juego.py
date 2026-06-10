@@ -24,6 +24,26 @@ class Juego:
 
         self.mis_unidades = []
         self.estructuras = []
+        self.mostrar_menu_construccion = False
+
+        # =========================================================================
+        # 🎥 CONFIGURACIÓN DE CÁMARA Y MAPA GIGANTE PROVISIONAL
+        # =========================================================================
+        self.ancho_mapa = 2400  # Tu mapa ahora mide 2400 píxeles de ancho
+        self.alto_mapa = 1800   # Tu mapa ahora mide 1800 píxeles de alto
+        self.camara_x = 0       # Posición horizontal de la cámara
+        self.camara_y = 0       # Posición vertical de la cámara
+
+        # Creamos una superficie verde gigante en memoria como fondo provisional
+        self.fondo_visual = pygame.Surface((self.ancho_mapa, self.alto_mapa))
+        self.fondo_visual.fill((34, 139, 34)) # Verde pasto
+        
+        # Dibujamos una cuadrícula cada 100 píxeles para notar el movimiento del scroll
+        for x in range(0, self.ancho_mapa, 100):
+            pygame.draw.line(self.fondo_visual, (45, 150, 45), (x, 0), (x, self.alto_mapa), 2)
+        for y in range(0, self.alto_mapa, 100):
+            pygame.draw.line(self.fondo_visual, (45, 150, 45), (0, y), (self.ancho_mapa, y), 2)
+        # =========================================================================
 
         # Tracking del destino global
         self.ultimo_destino_x = 100
@@ -35,307 +55,282 @@ class Juego:
         self.inicio_seleccion = (0, 0)
         self.fin_seleccion = (0, 0)
 
-        # Generadores
+        # Generadores (Colocamos al enemigo lejos, en la esquina inferior derecha del mapa gigante)
         self.generador_aliado = Generador(
             100, 100, "sistemas", (0, 125, 0), tiempo_generacion_segundos=3)
         self.generador_enemigo = Generador(
-            700, 500, "enemigos", (255, 0, 0), tiempo_generacion_segundos=3)
+            2200, 1600, "enemigos", (255, 0, 0), tiempo_generacion_segundos=3)
 
         # Unidad inicial
-        self.mis_unidades.append(Tropa(150, 150, "sistemas", 100, (0, 255, 0)))
+        self.mis_unidades.append(
+            Tropa(150, 150, "sistemas", 100, (0, 255, 0)))
 
-        # Estado del menú de construcción
-        self.menu_activo = False
-        self.opciones_menu = list(TIPOS_EDIFICIO.keys())
-        self.edificio_seleccionado = None
-        self.preview_pos = (0, 0)
-
-        # Árbol de habilidades
-        self.habilidades = ArbolHabilidades(self.faccion, self)
+        # Inicializar árbol de habilidades
+        self.habilidades = ArbolHabilidades("sistemas", self)
 
         # Fuentes
-        self.fuente = pygame.font.SysFont(None, 22)
+        self.fuente = pygame.font.SysFont(None, 20)
         self.fuente_grande = pygame.font.SysFont(None, 28)
 
-    # ------------------------------------------------------------------
-    # EVENTOS
-    # ------------------------------------------------------------------
+    def actualizar_camara(self):
+        """Mueve la cámara de forma automática si el mouse toca los bordes de la pantalla."""
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        velocidad_camara = 6
+
+        # Desplazamiento horizontal (borde izquierdo o derecho)
+        if mouse_x < 20:
+            self.camara_x -= velocidad_camara
+        elif mouse_x > 780:  # 800 de pantalla - 20 de margen
+            self.camara_x += velocidad_camara
+
+        # Desplazamiento vertical (borde superior o inferior)
+        if mouse_y < 20:
+            self.camara_y -= velocidad_camara
+        elif mouse_y > 580:  # 600 de pantalla - 20 de margen
+            self.camara_y += velocidad_camara
+
+        # Limitamos la cámara para que nunca muestre el vacío fuera del mapa gigante
+        self.camara_x = max(0, min(self.camara_x, self.ancho_mapa - 800))
+        self.camara_y = max(0, min(self.camara_y, self.alto_mapa - 600))
 
     def procesar_eventos(self, event):
-        # Abrir/cerrar menú con B
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_b:
-            if not self.edificio_seleccionado:
-                self.menu_activo = not self.menu_activo
+        # 🆕 1. Detectar si se presiona la tecla 'B' para abrir/cerrar el menú
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_b:
+                self.mostrar_menu_construccion = not self.mostrar_menu_construccion
 
-        # Cancelar con ESC
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            if self.edificio_seleccionado:
-                self.edificio_seleccionado = None
-            else:
-                self.menu_activo = False
-
-        # Actualizar posición del preview
-        if event.type == pygame.MOUSEMOTION:
-            self.preview_pos = event.pos
-            if self.seleccionando:
-                self.fin_seleccion = event.pos
-
-        # Clic izquierdo
+        # --- CLIC IZQUIERDO: SELECCIÓN ---
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.menu_activo and not self.edificio_seleccionado:
-                self._click_menu(event.pos)
-            elif self.edificio_seleccionado:
-                self._colocar_edificio(event.pos)
-            else:
-                # Inicio del cuadro de selección
-                self.seleccionando = True
-                self.inicio_seleccion = event.pos
-                self.fin_seleccion = event.pos
+            # Si el clic es en la interfaz del menú, no arrastramos el cuadro de selección
+            if event.pos[0] > 650 and event.pos[1] > 400:
+                self._procesar_clic_menu(event.pos)
+                return
 
-        # Soltar clic izquierdo: cerrar cuadro de selección
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.seleccionando = True
+            # Convertimos la posición de la pantalla a coordenadas reales del mapa gigante
+            self.inicio_seleccion = (event.pos[0] + self.camara_x, event.pos[1] + self.camara_y)
+            self.fin_seleccion = self.inicio_seleccion
+
+        elif event.type == pygame.MOUSEMOTION and self.seleccionando:
+            # Guardamos la posición del arrastre en coordenadas reales
+            self.fin_seleccion = (event.pos[0] + self.camara_x, event.pos[1] + self.camara_y)
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self.seleccionando:
                 self.seleccionando = False
-                self.fin_seleccion = event.pos
-                self.evaluar_seleccion_multiple()
 
-        # Clic derecho: mover tropas seleccionadas (solo si no hay menú activo)
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-            if not self.menu_activo and not self.edificio_seleccionado:
-                mouse_x, mouse_y = event.pos
-                self.ultimo_destino_x = mouse_x
-                self.ultimo_destino_y = mouse_y
-                self.estado_actual_ordenado = "moviendose"
+                x_min = min(self.inicio_seleccion[0], self.fin_seleccion[0])
+                x_max = max(self.inicio_seleccion[0], self.fin_seleccion[0])
+                y_min = min(self.inicio_seleccion[1], self.fin_seleccion[1])
+                y_max = max(self.inicio_seleccion[1], self.fin_seleccion[1])
 
-                for unidad in self.mis_unidades:
-                    if unidad.faccion == "sistemas" and unidad.seleccionada:
-                        unidad.destinoX = mouse_x
-                        unidad.destinoY = mouse_y
-                        unidad.estado = "moviendose"
-                        unidad.tarea = None
-                        unidad.objetivo = None
+                # Si el arrastre es milimétrico, se procesa como un clic simple
+                es_clic_simple = (x_max - x_min < 5) and (y_max - y_min < 5)
 
-                mouse_x, mouse_y = event.pos
-                pos_clic = pygame.math.Vector2(mouse_x, mouse_y)
+                for u in self.mis_unidades:
+                    if u.faccion == "sistemas":
+                        if es_clic_simple:
+                            # Clic simple: medimos distancia con el radio de la unidad
+                            dist = ((u.x - x_min) ** 2 + (u.y - y_min) ** 2) ** 0.5
+                            u.seleccionada = (dist <= u.radio)
+                        else:
+                            # Selección por cuadro en el mapa gigante
+                            u.seleccionada = (x_min <= u.x <= x_max and y_min <= u.y <= y_max)
 
-                # 1. detectar si el jugador le hizo clic a un enemigo
-                enemigo_clicado = None
-                for unidad in self.mis_unidades:
-                    if unidad.faccion == "enemigos":  # si es del bando contrario
-                        pos_enemigo = pygame.math.Vector2(unidad.x, unidad.y)
-                        # si el clic cayo dentro del radio del círculo del enemigo
-                        if (pos_clic - pos_enemigo).length() <= unidad.radio:
-                            enemigo_clicado = unidad
+        # --- CLIC DERECHO: ACCIONES Y MOVIMIENTO ---
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            mouse_x, mouse_y = event.pos
+            mundo_x = mouse_x + self.camara_x
+            mundo_y = mouse_y + self.camara_y
+            self.ultimo_destino_x = mundo_x
+            self.ultimo_destino_y = mundo_y
+
+            objetivo_enemigo = None
+            objetivo_estructura = None
+
+            # 1. Chequear si hicimos clic sobre un enemigo
+            for unidad in self.mis_unidades:
+                if unidad.faccion == "enemigos" and unidad.vida > 0:
+                    distancia = pygame.math.Vector2(mundo_x - unidad.x, mundo_y - unidad.y).length()
+                    if distancia <= unidad.radio:
+                        objetivo_enemigo = unidad
+                        break
+
+            # 2. Chequear si hicimos clic sobre una estructura sin terminar
+            if not objetivo_enemigo:
+                for est in self.estructuras:
+                    # Chequeo de colisión simple (ajusta según tu lógica)
+                    if est.x - 25 <= mundo_x <= est.x + 25 and est.y - 25 <= mundo_y <= est.y + 25:
+                        if not est.construida:
+                            objetivo_estructura = est
                             break
 
-                # 2. repartir la orden a las unidades seleccionadas
-                for unidad in self.mis_unidades:
-                    if unidad.faccion == "sistemas" and unidad.seleccionada:
-                        if enemigo_clicado is not None:
-                            # ORDEN MANUAL DE ATAQUE
-                            unidad.objetivo_combate = enemigo_clicado
-                            unidad.estado = "atacando"
-                        else:
-                            # ORDEN DE MOVIMIENTO NORMAL
-                            unidad.destinoX = mouse_x
-                            unidad.destinoY = mouse_y
-                            unidad.estado = "moviendose"
-                            unidad.objetivo_combate = None # olvida el objetivo anterior si se le ordena caminar
+            # 3. Mandar la orden a todas las unidades aliadas seleccionadas
+            for tropa in self.mis_unidades:
+                if tropa.seleccionada and tropa.faccion == self.faccion:
+                    if objetivo_enemigo:
+                        # ¡A la guerra!
+                        tropa.tarea = "atacar"
+                        tropa.objetivo_combate = objetivo_enemigo
+                        tropa.objetivo = None # Borrar orden de construcción si la tenía
+                    elif objetivo_estructura:
+                        # ¡A trabajar!
+                        tropa.tarea = "construir"
+                        tropa.objetivo = objetivo_estructura
+                        tropa.objetivo_combate = None
+                    else:
+                        # Simplemente caminar
+                        tropa.tarea = None
+                        tropa.objetivo = None
+                        tropa.objetivo_combate = None
+                        tropa.destinoX = mundo_x
+                        tropa.destinoY = mundo_y
+                        tropa.estado = "moviendose"
 
-    def _click_menu(self, pos):
-        mx, my = pos
-        menu_x, menu_y = 10, 40
-        ancho_opcion, alto_opcion = 130, 36
-        separacion = 8
+    def _procesar_clic_menu(self, pos):
+        menu_x = 660
+        menu_y = 410
+        ancho_opcion = 120
+        alto_opcion = 40
+        separacion = 10
 
-        for i, nombre in enumerate(self.opciones_menu):
-            rect = pygame.Rect(
-                menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
-            if rect.collidepoint(mx, my):
-                if self.oro >= COSTOS_EDIFICIO[nombre]:
-                    self.edificio_seleccionado = nombre
-                    self.menu_activo = False
-                break
+        opciones = list(TIPOS_EDIFICIO.keys())
+        for i, nombre in enumerate(opciones):
+            rect = pygame.Rect(menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
+            if rect.collidepoint(pos):
+                costo = COSTOS_EDIFICIO[nombre]
+                if self.oro >= costo:
+                    self.oro -= costo
+                    ClaseEstructura = TIPOS_EDIFICIO[nombre]
 
-    def _colocar_edificio(self, pos):
-        nombre = self.edificio_seleccionado
-        costo = COSTOS_EDIFICIO[nombre]
-        if self.oro < costo:
-            return
+                    # 🆕 Colocamos la estructura ("los cimientos") en el mapa
+                    nueva_est = ClaseEstructura(self.ultimo_destino_x, self.ultimo_destino_y, "sistemas")
+                    self.estructuras.append(nueva_est)
+                    print(f"Comprado {nombre}. Oro restante: {self.oro}")
 
-        self.oro -= costo
-        nueva = TIPOS_EDIFICIO[nombre](pos[0], pos[1], self.faccion)
-        self.estructuras.append(nueva)
-
-        # Manda las tropas seleccionadas a construir
-        for unidad in self.mis_unidades:
-            if unidad.faccion == "sistemas" and unidad.seleccionada:
-                unidad.tarea = "construir"
-                unidad.objetivo = nueva
-                unidad.destinoX = pos[0]
-                unidad.destinoY = pos[1]
-                unidad.estado = "moviendose"
-
-        self.edificio_seleccionado = None
-
-    def evaluar_seleccion_multiple(self):
-        x_min = min(self.inicio_seleccion[0], self.fin_seleccion[0])
-        x_max = max(self.inicio_seleccion[0], self.fin_seleccion[0])
-        y_min = min(self.inicio_seleccion[1], self.fin_seleccion[1])
-        y_max = max(self.inicio_seleccion[1], self.fin_seleccion[1])
-
-        for unidad in self.mis_unidades:
-            if unidad.faccion == "sistemas":
-                if x_min <= unidad.x <= x_max and y_min <= unidad.y <= y_max:
-                    unidad.seleccionada = True
+                    # 🆕 Mandamos a los obreros seleccionados a construir
+                    for u in self.mis_unidades:
+                        if u.seleccionada and u.faccion == "sistemas":
+                            u.objetivo = nueva_est
+                            u.tarea = "construir"
+                            u.destinoX = nueva_est.x
+                            u.destinoY = nueva_est.y
+                            u.estado = "moviendose"
                 else:
-                    unidad.seleccionada = False
-
-    # ------------------------------------------------------------------
-    # ACTUALIZAR
-    # ------------------------------------------------------------------
+                    print("No tienes suficiente oro.")
 
     def actualizar(self):
+        # ⚔️ Lógica de combate y movimiento corregida
+        # 🎥 Movemos la cámara
+        self.actualizar_camara()
+
         self.generador_aliado.actualizar(self.mis_unidades)
         self.generador_enemigo.actualizar(self.mis_unidades)
 
-        # Filtro para mantener vivas solo a las unidades con salud
+        # ⚔️ Lógica maestra
+        for unidad in self.mis_unidades:
+            if unidad.faccion == "sistemas":
+                # Tus tropas solo hacen lo que tú les ordenes
+                unidad.ejecutar_tareas(self.mis_unidades)
+            else:
+                # Los enemigos (rojos) tienen IA automática: buscan y atacan
+                enemigo = unidad.buscar_enemigo_mas_cercano(self.mis_unidades)
+                if enemigo:
+                    unidad.tarea = "atacar"
+                    unidad.objetivo_combate = enemigo
+                    unidad.ejecutar_tareas(self.mis_unidades)
+
+        for est in self.estructuras:
+            est.actualizar(self)
+
         self.mis_unidades = [u for u in self.mis_unidades if u.vida > 0]
 
-        for unidad in self.mis_unidades:
-            # Si le ordenaste moverse colectivamente
-            if unidad.faccion == "sistemas" and unidad.seleccionada:
-                if self.estado_actual_ordenado == "moviendose" and unidad.destinoX != self.ultimo_destino_x:
-                    unidad.destinoX = self.ultimo_destino_x
-                    unidad.destinoY = self.ultimo_destino_y
-                    unidad.estado = "moviendose"
-
-            # 🛡️ IA DE AUTODEFENSA (Solo si está quieta y tú no le has dado órdenes manuales)
-            if unidad.estado == "quieto" and unidad.objetivo_combate is None:
-                enemigo_cercano = unidad.buscar_enemigo_mas_cercano(self.mis_unidades)
-                if enemigo_cercano:
-                    pos_u = pygame.math.Vector2(unidad.x, unidad.y)
-                    pos_e = pygame.math.Vector2(enemigo_cercano.x, enemigo_cercano.y)
-                    # Si el enemigo invade su espacio (100 píxeles), se defiende solo
-                    if (pos_u - pos_e).length() < 100:
-                        unidad.objetivo_combate = enemigo_cercano
-                        unidad.estado = "atacando"
-
-            if unidad.objetivo_combate is not None:
-                unidad.atacar(self.mis_unidades)
-
-            # Actualizaciones físicas por frame
-            unidad.movimiento(self.mis_unidades)
-            self._actualizar_tarea(unidad)
-
-        # Corregido: "estructura" en español para que coincida con el for
-        for estructura in self.estructuras:
-            estructura.actualizar(self)
-
-    def _actualizar_tarea(self, unidad):
-        if unidad.estado != "quieto" or unidad.tarea is None:
-            return
-
-        if unidad.tarea == "construir" and unidad.objetivo:
-            estructura = unidad.objetivo
-            if not estructura.construida:
-                estructura.recibir_construccion(unidad.velocidad_construccion)
-            else:
-                unidad.tarea = None
-                unidad.objetivo = None
-
-    # ------------------------------------------------------------------
-    # DIBUJAR
-    # ------------------------------------------------------------------
-
     def dibujar(self):
-        # Generadores (fondo)
-        self.generador_aliado.dibujar(self.pantalla)
-        self.generador_enemigo.dibujar(self.pantalla)
+        # 🎥 1. Pintamos nuestro césped gigante desplazado según el movimiento de la cámara
+        self.pantalla.blit(self.fondo_visual, (-self.camara_x, -self.camara_y))
 
-        # Estructuras construidas/en construcción
-        for estructura in self.estructuras:
-            estructura.dibujar(self.pantalla, self.fuente)
+        # 2. Dibujamos las bases (generadores) restando la posición de la cámara
+        pygame.draw.rect(self.pantalla, self.generador_aliado.color,
+                         (self.generador_aliado.x - 20 - self.camara_x, self.generador_aliado.y - 20 - self.camara_y, 40, 40))
+        pygame.draw.rect(self.pantalla, self.generador_enemigo.color,
+                         (self.generador_enemigo.x - 20 - self.camara_x, self.generador_enemigo.y - 20 - self.camara_y, 40, 40))
 
-        # Unidades
-        for unidad in self.mis_unidades:
-            # Dibujamos el círculo base de la tropa
-            unidad.dibujar(self.pantalla)
+        # 3. Dibujamos estructuras aplicando la cámara de forma segura
+        for est in self.estructuras:
+            coord_real_x, coord_real_y = est.x, est.y
+            # Las movemos temporalmente a posición de pantalla para usar su propio dibujo interno
+            est.x -= self.camara_x
+            est.y -= self.camara_y
+            est.dibujar(self.pantalla, self.fuente)
+            # Restauramos sus coordenadas reales para no alterar la lógica matemática
+            est.x, est.y = coord_real_x, coord_real_y
 
-        # Cuadro de selección
+        # 4. Dibujamos las unidades restándoles la posición de la cámara
+        for u in self.mis_unidades:
+            screen_x = int(u.x - self.camara_x)
+            screen_y = int(u.y - self.camara_y)
+
+            # Optimización básica: solo dibujamos si se encuentran visibles dentro de la ventana
+            if -30 <= screen_x <= 830 and -30 <= screen_y <= 630:
+                pygame.draw.circle(self.pantalla, u.color, (screen_x, screen_y), u.radio)
+
+                # Dibujamos el anillo circular blanco si la unidad está seleccionada
+                if u.seleccionada and u.faccion == "sistemas":
+                    pygame.draw.circle(self.pantalla, (255, 255, 255), (screen_x, screen_y), u.radio + 2, 1)
+
+        # 5. Dibujamos el cuadro blanco de arrastre visual (si el jugador está seleccionando)
         if self.seleccionando:
-            x = min(self.inicio_seleccion[0], self.fin_seleccion[0])
-            y = min(self.inicio_seleccion[1], self.fin_seleccion[1])
-            ancho = abs(self.fin_seleccion[0] - self.inicio_seleccion[0])
-            alto = abs(self.fin_seleccion[1] - self.inicio_seleccion[1])
-            pygame.draw.rect(self.pantalla, (0, 255, 0),
-                             pygame.Rect(x, y, ancho, alto), 1)
+            # 1. Encontrar la esquina superior izquierda real de la selección
+            x_min = min(self.inicio_seleccion[0], self.fin_seleccion[0])
+            y_min = min(self.inicio_seleccion[1], self.fin_seleccion[1])
 
-        # Preview del edificio a colocar
-        if self.edificio_seleccionado:
-            self._dibujar_preview()
+            # 2. Calcular el ancho y alto asegurándote de que sean positivos
+            ancho_abs = abs(self.fin_seleccion[0] - self.inicio_seleccion[0])
+            alto_abs = abs(self.fin_seleccion[1] - self.inicio_seleccion[1])
 
-        # Menú de construcción
-        if self.menu_activo:
-            self._dibujar_menu()
+            # 3. Si estás aplicando la cámara para dibujarlo en el mapa (coordenadas del mundo):
+            visual_x = x_min - self.camara_x
+            visual_y = y_min - self.camara_y
+            visual_w = ancho_abs
+            visual_h = alto_abs
 
-        # HUD
+            visual_x = x_min - self.camara_x
+            visual_y = y_min - self.camara_y
+            visual_w = ancho_abs
+            visual_h = alto_abs
+
+            pygame.draw.rect(self.pantalla, (255, 255, 255), (visual_x, visual_y, visual_w, visual_h), 1)
+
+        # 6. INTERFAZ ESTÁTICA: El HUD y el menú de construcción se quedan fijos en la pantalla
         self._dibujar_hud()
 
-    def _dibujar_preview(self):
-        px, py = self.preview_pos
-        superficie = pygame.Surface((60, 60), pygame.SRCALPHA)
-        superficie.fill((255, 255, 255, 60))
-        pygame.draw.rect(superficie, (200, 200, 255, 120), (0, 0, 60, 60), 2)
-        self.pantalla.blit(superficie, (px - 30, py - 30))
-        texto = self.fuente.render(
-            self.edificio_seleccionado, True, (220, 220, 255))
-        self.pantalla.blit(texto, (px - texto.get_width() // 2, py - 50))
+        # 🆕 Solo se dibuja si el jugador presionó la 'B'
+        if self.mostrar_menu_construccion:
+            self._dibujar_menu_construccion()
 
-    def _dibujar_menu(self):
-        menu_x, menu_y = 10, 40
-        ancho_opcion, alto_opcion = 130, 36
-        separacion = 8
+    def _dibujar_menu_construccion(self):
+        menu_x = 660
+        menu_y = 410
+        ancho_opcion = 120
+        alto_opcion = 40
+        separacion = 10
 
-        alto_total = len(self.opciones_menu) * (alto_opcion + separacion) + 36
-        fondo = pygame.Surface((150, alto_total), pygame.SRCALPHA)
-        fondo.fill((20, 20, 40, 200))
-        self.pantalla.blit(fondo, (menu_x - 5, menu_y - 5))
-
-        titulo = self.fuente_grande.render(
-            "Construir (B)", True, (200, 200, 255))
-        self.pantalla.blit(titulo, (menu_x, menu_y - 28))
-
-        for i, nombre in enumerate(self.opciones_menu):
-            rect = pygame.Rect(
-                menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
+        opciones = list(TIPOS_EDIFICIO.keys())
+        for i, nombre in enumerate(opciones):
+            rect = pygame.Rect(menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
             costo = COSTOS_EDIFICIO[nombre]
             puede_pagar = self.oro >= costo
             color_fondo = (40, 80, 40) if puede_pagar else (80, 40, 40)
             color_borde = (100, 200, 100) if puede_pagar else (200, 100, 100)
 
             pygame.draw.rect(self.pantalla, color_fondo, rect, border_radius=6)
-            pygame.draw.rect(self.pantalla, color_borde,
-                             rect, width=1, border_radius=6)
+            pygame.draw.rect(self.pantalla, color_borde, rect, width=1, border_radius=6)
 
             texto_nombre = self.fuente.render(nombre, True, (230, 230, 230))
-            texto_costo = self.fuente.render(
-                f"{costo} oro", True, (200, 180, 80))
+            texto_costo = self.fuente.render(f"{costo} oro", True, (200, 180, 80))
             self.pantalla.blit(texto_nombre, (rect.x + 8, rect.y + 5))
             self.pantalla.blit(texto_costo, (rect.x + 8, rect.y + 20))
 
     def _dibujar_hud(self):
-        txt_oro = self.fuente_grande.render(
-            f"Oro: {int(self.oro)}", True, (255, 215, 0))
-        self.pantalla.blit(
-            txt_oro, (self.pantalla.get_width() - txt_oro.get_width() - 10, 10))
-
-        instrucciones = [
-            "B - menu construccion",
-            "Clic der - mover seleccionadas",
-            "ESC - cancelar",
-        ]
-        for j, linea in enumerate(instrucciones):
-            txt = self.fuente.render(linea, True, (180, 180, 180))
-            self.pantalla.blit(
-                txt, (self.pantalla.get_width() - txt.get_width() - 10, 40 + j * 20))
+        txt_oro = self.fuente_grande.render(f"Oro: {int(self.oro)}", True, (255, 215, 0))
+        self.pantalla.blit(txt_oro, (20, 20))

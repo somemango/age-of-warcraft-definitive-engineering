@@ -16,7 +16,6 @@ while run:
 
     juego.actualizar()
 
-    pantalla.fill("purple")
     juego.dibujar()
     pygame.display.flip()
 

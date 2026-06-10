@@ -87,7 +87,7 @@ class Cuartel(Estructura):
             self.cola.pop(0)
             # Genera la tropa cerca del cuartel
             from unidades import Tropa
-            nueva = Tropa(self.x + 40, self.y, self.faccion, 100)
+            nueva = Tropa(self.x + 40, self.y, self.faccion, 100, (0, 255, 0))
             juego.mis_unidades.append(nueva)
 
 
