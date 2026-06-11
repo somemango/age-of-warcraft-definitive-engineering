@@ -135,11 +135,16 @@ class Granja(Estructura):
 # ----------------------------------------------------------------------
 
 class BaseDatos(Estructura):
-    
+    """[SISTEMAS] Genera oro pasivamente y aplica buff de velocidad de entrenamiento
+    a todos los cuarteles aliados mientras esté activa."""
 
     COLOR_EDIFICIO = (60, 120, 200)
+
     def __init__(self, x, y, faccion):
         super().__init__(x, y, faccion, costo=180)
+        self.oro_por_frame = 0.08           # Más rentable que la Mina básica
+        self.buff_entrena = 1.3             # +30 % velocidad de entrenamiento
+        self._buff_aplicado = False
 
     def al_construirse(self):
         self._buff_aplicado = False
@@ -148,6 +153,14 @@ class BaseDatos(Estructura):
         if not self.construida:
             return
 
+        # Genera oro pasivo
+        mod = getattr(juego, "mod_oro", 1.0)
+        juego.oro += self.oro_por_frame * mod
+
+        # Aplica buff de entrenamiento una sola vez
+        if not self._buff_aplicado:
+            juego.mod_entrena = max(getattr(juego, "mod_entrena", 1.0), self.buff_entrena)
+            self._buff_aplicado = True
 
     def dibujar(self, pantalla, fuente):
         super().dibujar(pantalla, fuente)
@@ -160,18 +173,41 @@ class BaseDatos(Estructura):
 
 
 class Torreta(Estructura):
-    
+    """[CIVIL] Dispara automáticamente al enemigo más cercano dentro de su rango."""
 
     COLOR_EDIFICIO = (160, 80, 60)
-            
+
     def __init__(self, x, y, faccion):
         super().__init__(x, y, faccion, costo=220)
+        self.rango = 150
+        self.dano = 15
+        self.cooldown = 90              # Frames entre disparos (1.5 seg)
+        self.timer = 0
+        self.objetivo = None
+        self._angulo = 0                # Para animar el cañón
+
     def actualizar(self, juego):
         if not self.construida:
             return
 
         if self.timer > 0:
             self.timer -= 1
+
+        # Buscar enemigo más cercano dentro del rango
+        self.objetivo = None
+        distancia_min = self.rango
+        for unidad in juego.mis_unidades:
+            if unidad.faccion != self.faccion and unidad.vida > 0:
+                dist = pygame.math.Vector2(
+                    self.x - unidad.x, self.y - unidad.y).length()
+                if dist < distancia_min:
+                    distancia_min = dist
+                    self.objetivo = unidad
+
+        # Disparar
+        if self.objetivo and self.timer == 0:
+            self.objetivo.vida -= self.dano
+            self.timer = self.cooldown
 
     def dibujar(self, pantalla, fuente):
         super().dibujar(pantalla, fuente)
@@ -211,16 +247,39 @@ class Torreta(Estructura):
 
 
 class Antena(Estructura):
-    
+    """[TELECOMUNICACIONES] Amplía el campo de visión aliado y genera un pulso
+    periódico que ralentiza a los enemigos cercanos."""
 
     COLOR_EDIFICIO = (80, 180, 160)
-       # Para animar el pulso
+
     def __init__(self, x, y, faccion):
         super().__init__(x, y, faccion, costo=160)
+        self.rango_pulso = 120
+        self.ralentizacion = 0.5        # Multiplicador de velocidad (50 % más lento)
+        self.intervalo_pulso = 300      # Frames entre pulsos (5 seg)
+        self.timer_pulso = 0
+        self._pulso_visual = 0          # Para animar el pulso
+
     def actualizar(self, juego):
         if not self.construida:
             return
 
+        self.timer_pulso += 1
+        if self._pulso_visual > 0:
+            self._pulso_visual -= 4
+
+        if self.timer_pulso >= self.intervalo_pulso:
+            self.timer_pulso = 0
+            self._pulso_visual = self.rango_pulso  # Activa animación
+
+            # Ralentizar enemigos cercanos temporalmente
+            for unidad in juego.mis_unidades:
+                if unidad.faccion != self.faccion:
+                    dist = pygame.math.Vector2(
+                        self.x - unidad.x, self.y - unidad.y).length()
+                    if dist <= self.rango_pulso:
+                        unidad.velocidad = max(
+                            0.5, unidad.velocidad * self.ralentizacion)
 
     def dibujar(self, pantalla, fuente):
         super().dibujar(pantalla, fuente)
@@ -249,15 +308,59 @@ class Antena(Estructura):
 
 
 class MinaMejorada(Estructura):
-    
+    """[INDUSTRIAL] Genera oro a alta velocidad y además produce un bono de armadura
+    a las tropas aliadas cercanas."""
 
     COLOR_EDIFICIO = (200, 140, 40)
+
     def __init__(self, x, y, faccion):
         super().__init__(x, y, faccion, costo=200)
-        
+        self.oro_por_frame = 0.15           # Triple que la Mina básica
+        self.rango_armadura = 100
+        self.bonus_armadura = 5             # Reduce el daño recibido
+        self._armadura_aplicada = set()     # IDs de unidades ya buffeadas
+        self._particulas = []               # Mini partículas de chispa visual
+
     def actualizar(self, juego):
         if not self.construida:
             return
+
+        # Generar oro
+        mod = getattr(juego, "mod_oro", 1.0)
+        juego.oro += self.oro_por_frame * mod
+
+        # Aplicar armadura a tropas aliadas cercanas (solo una vez por unidad)
+        for unidad in juego.mis_unidades:
+            if unidad.faccion == self.faccion and id(unidad) not in self._armadura_aplicada:
+                dist = pygame.math.Vector2(
+                    self.x - unidad.x, self.y - unidad.y).length()
+                if dist <= self.rango_armadura:
+                    unidad.dano_reduccion = getattr(unidad, "dano_reduccion", 0) + self.bonus_armadura
+                    self._armadura_aplicada.add(id(unidad))
+
+        # Limpiar IDs de unidades muertas para no acumular memoria
+        ids_vivos = {id(u) for u in juego.mis_unidades}
+        self._armadura_aplicada &= ids_vivos
+
+        # Generar partículas de chispa ocasionalmente
+        import random
+        if random.random() < 0.15:
+            import math
+            angulo = random.uniform(0, math.pi * 2)
+            self._particulas.append({
+                "x": self.x + random.randint(-10, 10),
+                "y": self.y + random.randint(-10, 10),
+                "vx": math.cos(angulo) * random.uniform(0.5, 2),
+                "vy": math.sin(angulo) * random.uniform(0.5, 2) - 1.5,
+                "vida": random.randint(15, 30),
+            })
+
+        # Actualizar partículas
+        for p in self._particulas:
+            p["x"] += p["vx"]
+            p["y"] += p["vy"]
+            p["vida"] -= 1
+        self._particulas = [p for p in self._particulas if p["vida"] > 0]
 
     def dibujar(self, pantalla, fuente):
         super().dibujar(pantalla, fuente)

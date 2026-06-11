@@ -18,10 +18,10 @@ COSTOS_EDIFICIO_BASE = {
 
 # Estructura exclusiva por facción: faccion → (nombre_clave, clase, costo, descripcion)
 EDIFICIO_EXCLUSIVO = {
-    "sistemas":           ("BaseDatos",     BaseDatos,     180, ""),
-    "civil":              ("Torreta",       Torreta,       220, ""),
-    "telecomunicaciones": ("Antena",        Antena,        160, ""),
-    "industrial":         ("MinaMejorada",  MinaMejorada,  200, ""),
+    "sistemas":           ("BaseDatos",     BaseDatos,     180, "Oro+, entrena rápido"),
+    "civil":              ("Torreta",       Torreta,       220, "Dispara a enemigos"),
+    "telecomunicaciones": ("Antena",        Antena,        160, "Ralentiza enemigos"),
+    "industrial":         ("MinaMejorada",  MinaMejorada,  200, "Oro ×3, armadura"),
 }
 
 
@@ -36,10 +36,6 @@ class Juego:
         self.estructuras = []
         self.mostrar_menu_construccion = False
 
-        self.habilidades = ArbolHabilidades(self.faccion, self)
-        self.mostrar_menu_habilidades = False
-        self.rects_habilidades = {}
-
         # =========================================================================
         # 🎥 CONFIGURACIÓN DE CÁMARA Y MAPA GIGANTE PROVISIONAL
         # =========================================================================
@@ -50,8 +46,8 @@ class Juego:
 
         # Creamos una superficie verde gigante en memoria como fondo provisional
         self.fondo_visual = pygame.Surface((self.ancho_mapa, self.alto_mapa))
-        self.fondo_visual.fill((34, 139, 34))  # Verde pasto
-
+        self.fondo_visual.fill((34, 139, 34)) # Verde pasto
+        
         # Dibujamos una cuadrícula cada 100 píxeles para notar el movimiento del scroll
         for x in range(0, self.ancho_mapa, 100):
             pygame.draw.line(self.fondo_visual, (45, 150, 45), (x, 0), (x, self.alto_mapa), 2)
@@ -79,6 +75,46 @@ class Juego:
         self.mis_unidades.append(
             Tropa(150, 150, self.faccion, 100, (0, 255, 0)))
 
+        # Inicializar árbol de habilidades
+        self.habilidades = ArbolHabilidades(self.faccion, self)
+
+        # ------------------------------------------------------------------
+        # BASE INICIAL DEL ENEMIGO (ya construidas desde el inicio)
+        # ------------------------------------------------------------------
+        ex = self.generador_enemigo.x
+        ey = self.generador_enemigo.y
+
+        def _base(clase, dx, dy):
+            est = clase(ex + dx, ey + dy, self.faccion_enemigo)
+            est.progreso = 100
+            est.construida = True
+            est.al_construirse()
+            self.estructuras.append(est)
+            return est
+
+        _base(Cuartel, -120, 0)       # Cuartel a la izquierda del generador
+        _base(Cuartel,  120, 0)       # Segundo cuartel a la derecha
+        _base(Mina,       0, 120)     # Mina debajo
+        _base(Granja,  -120, 120)     # Granja diagonal
+
+        # Estructura exclusiva de la facción enemiga (también pre-construida)
+        if self.faccion_enemigo in EDIFICIO_EXCLUSIVO:
+            _, ClaseExcl, _, _ = EDIFICIO_EXCLUSIVO[self.faccion_enemigo]
+            _base(ClaseExcl, 120, 120)
+
+        # Unidades iniciales enemigas (pequeña guardia)
+        for dx, dy in [(-60, -60), (0, -80), (60, -60)]:
+            t = Tropa(ex + dx, ey + dy, self.faccion_enemigo, 100, (255, 60, 60))
+            self.mis_unidades.append(t)
+
+        # ------------------------------------------------------------------
+        # ESTADO DE LA IA ENEMIGA
+        # ------------------------------------------------------------------
+        self.ia_fase = "defender"       # "defender" | "atacar" | "reagrupar"
+        self.ia_timer = 0               # Contador de frames
+        self.ia_intervalo_ataque = 600  # Lanza oleada cada 10 seg (60fps×10)
+        self.ia_punto_rally = (ex - 200, ey - 200)  # Punto de reunión antes de atacar
+
         # Construir catálogo de edificios: base + exclusivo de la facción
         self.tipos_edificio = dict(TIPOS_EDIFICIO_BASE)
         self.costos_edificio = dict(COSTOS_EDIFICIO_BASE)
@@ -96,29 +132,6 @@ class Juego:
         # Fuentes
         self.fuente = pygame.font.SysFont(None, 20)
         self.fuente_grande = pygame.font.SysFont(None, 28)
-
-        # modificadores para cada faccion
-        self.habilidades = ArbolHabilidades(self.faccion, self)
-
-        # sistemas
-        self.mod_danno = 1.0
-        self.mod_entrena = 1.0
-        self.mod_base_datos = False
-
-        # civil
-        self.mod_torreta_cemento = False
-        self.mod_bufo_vida = 1.0
-        self.mod_planificacion_urbana = 1.0
-
-        # industrial
-        self.mod_mejor_mina = 1.0
-        self.mod_linea_ensamblaje = 1.0
-        self.mod_manufactura = 1.0
-
-        # telecom
-        self.mod_antena_amplificadora = 1.0
-        self.mod_banda_ancha = 1.0
-        self.timer_antena_suprema = 0
 
     def actualizar_camara(self):
         """Mueve la cámara de forma automática si el mouse toca los bordes de la pantalla."""
@@ -196,13 +209,21 @@ class Juego:
             objetivo_enemigo = None
             objetivo_estructura = None
 
-            # 1. Chequear si hicimos clic sobre un enemigo
-            for unidad in self.mis_unidades:
-                if unidad.faccion == self.faccion_enemigo and unidad.vida > 0:
-                    distancia = pygame.math.Vector2(mundo_x - unidad.x, mundo_y - unidad.y).length()
-                    if distancia <= unidad.radio:
-                        objetivo_enemigo = unidad
-                        break
+            # 1a. Chequear si hicimos clic sobre el generador enemigo
+            if self.generador_enemigo.vida > 0:
+                dist_gen = pygame.math.Vector2(mundo_x - self.generador_enemigo.x,
+                                               mundo_y - self.generador_enemigo.y).length()
+                if dist_gen <= self.generador_enemigo.radio:
+                    objetivo_enemigo = self.generador_enemigo
+
+            # 1b. Chequear si hicimos clic sobre una tropa enemiga
+            if not objetivo_enemigo:
+                for unidad in self.mis_unidades:
+                    if unidad.faccion == self.faccion_enemigo and unidad.vida > 0:
+                        distancia = pygame.math.Vector2(mundo_x - unidad.x, mundo_y - unidad.y).length()
+                        if distancia <= unidad.radio:
+                            objetivo_enemigo = unidad
+                            break
 
             # 2. Chequear si hicimos clic sobre una estructura sin terminar
             if not objetivo_enemigo:
@@ -237,10 +258,10 @@ class Juego:
 
     def _procesar_clic_menu(self, pos):
         menu_x = 660
-        menu_y = 380
-        ancho_opcion = 130
-        alto_opcion = 44
-        separacion = 8
+        menu_y = 410
+        ancho_opcion = 120
+        alto_opcion = 40
+        separacion = 10
 
         opciones = list(self.tipos_edificio.keys())
         for i, nombre in enumerate(opciones):
@@ -262,51 +283,162 @@ class Juego:
                             u.destinoX = nueva_est.x
                             u.destinoY = nueva_est.y
                             u.estado = "moviendose"
-                    break
                 else:
                     print("No tienes suficiente oro.")
 
     def actualizar(self):
-        # para la antena suprema de telecom
-        if self.timer_antena_suprema > 0:
-            self.timer_antena_suprema -= 1
-            if self.timer_antena_suprema == 0:
-                self.mod_antena_suprema = False
-
-        # ⚔️ Lógica de combate y movimiento corregida
-        # 🎥 Movemos la cámara
         self.actualizar_camara()
 
         self.generador_aliado.actualizar(self.mis_unidades)
         self.generador_enemigo.actualizar(self.mis_unidades)
 
-        # ⚔️ Lógica maestra
+        # Listas de objetivos separadas para evitar que cada bando ataque su propia base
+        objetivos_para_aliados  = self.mis_unidades + [self.generador_enemigo]
+        objetivos_para_enemigos = self.mis_unidades + [self.generador_aliado]
+
+        # Lógica de unidades
         for unidad in self.mis_unidades:
             if unidad.faccion == self.faccion:
-                # Tus tropas solo hacen lo que tú les ordenes
-                unidad.ejecutar_tareas(self.mis_unidades, self)
+                unidad.ejecutar_tareas(objetivos_para_aliados)
             else:
-                # Los enemigos tienen IA automática: buscan y atacan
-                enemigo = unidad.buscar_enemigo_mas_cercano(self.mis_unidades)
-                if enemigo:
-                    unidad.tarea = "atacar"
-                    unidad.objetivo_combate = enemigo
-                    unidad.ejecutar_tareas(self.mis_unidades, self)
+                self._mover_tropa_enemiga(unidad, objetivos_para_enemigos)
+
+        # IA del bot (toma decisiones de alto nivel)
+        todos_los_objetivos = self.mis_unidades + [self.generador_aliado, self.generador_enemigo]
+        self._actualizar_ia_enemiga(todos_los_objetivos)
 
         for est in self.estructuras:
             est.actualizar(self)
 
         self.mis_unidades = [u for u in self.mis_unidades if u.vida > 0]
 
+        # Verificar condición de derrota / victoria
+        self._verificar_fin_partida()
+
+    # ------------------------------------------------------------------
+    # IA ENEMIGA
+    # ------------------------------------------------------------------
+
+    def _tropas_enemigas(self):
+        return [u for u in self.mis_unidades if u.faccion == self.faccion_enemigo]
+
+    def _tropas_aliadas(self):
+        return [u for u in self.mis_unidades if u.faccion == self.faccion]
+
+    def _actualizar_ia_enemiga(self, todos_los_objetivos):
+        """Máquina de estados sencilla: defender → reagrupar → atacar → defender."""
+        tropas = self._tropas_enemigas()
+        aliadas = self._tropas_aliadas()
+        self.ia_timer += 1
+
+        ex, ey = self.generador_enemigo.x, self.generador_enemigo.y
+
+        if self.ia_fase == "defender":
+            for t in tropas:
+                if t.objetivo_combate is None or t.objetivo_combate.vida <= 0:
+                    t.objetivo_combate = None
+                    intruso = None
+                    for a in aliadas:
+                        if pygame.math.Vector2(a.x - ex, a.y - ey).length() < 350:
+                            intruso = a
+                            break
+                    if intruso:
+                        t.tarea = "atacar"
+                        t.objetivo_combate = intruso
+                    else:
+                        import math
+                        idx = tropas.index(t)
+                        angulo = (self.ia_timer * 0.01 + idx * (2 * math.pi / max(1, len(tropas))))
+                        px = ex + math.cos(angulo) * 120
+                        py = ey + math.sin(angulo) * 120
+                        if pygame.math.Vector2(t.x - px, t.y - py).length() > 30:
+                            t.destinoX = px
+                            t.destinoY = py
+                            t.estado = "moviendose"
+                            t.tarea = None
+
+            if len(tropas) >= 4 and self.ia_timer >= self.ia_intervalo_ataque:
+                self.ia_timer = 0
+                self.ia_fase = "reagrupar"
+                ax, ay = self.generador_aliado.x, self.generador_aliado.y
+                self.ia_punto_rally = (
+                    int(ex + (ax - ex) * 0.35),
+                    int(ey + (ay - ey) * 0.35),
+                )
+
+        elif self.ia_fase == "reagrupar":
+            rx, ry = self.ia_punto_rally
+            listas = 0
+            for t in tropas:
+                t.tarea = None
+                t.objetivo_combate = None
+                dist = pygame.math.Vector2(t.x - rx, t.y - ry).length()
+                if dist > 60:
+                    t.destinoX = rx
+                    t.destinoY = ry
+                    t.estado = "moviendose"
+                else:
+                    listas += 1
+            if listas >= max(1, int(len(tropas) * 0.7)):
+                self.ia_fase = "atacar"
+
+        elif self.ia_fase == "atacar":
+            if not tropas:
+                self.ia_fase = "defender"
+                self.ia_timer = 0
+                return
+
+            for t in tropas:
+                if t.objetivo_combate is None or t.objetivo_combate.vida <= 0:
+                    t.objetivo_combate = None
+                    # Buscar tropa aliada primero
+                    objetivo = t.buscar_enemigo_mas_cercano(todos_los_objetivos)
+                    if objetivo:
+                        t.tarea = "atacar"
+                        t.objetivo_combate = objetivo
+                    else:
+                        # Sin tropas visibles: atacar el generador aliado directamente
+                        if self.generador_aliado.vida > 0:
+                            t.tarea = "atacar"
+                            t.objetivo_combate = self.generador_aliado
+                        else:
+                            t.destinoX = self.generador_aliado.x
+                            t.destinoY = self.generador_aliado.y
+                            t.estado = "moviendose"
+                            t.tarea = None
+
+                t.ejecutar_tareas(todos_los_objetivos)
+
+            if len(tropas) < 2:
+                self.ia_fase = "defender"
+                self.ia_timer = 0
+
+    def _mover_tropa_enemiga(self, unidad, todos_los_objetivos):
+        """Delega el movimiento a ejecutar_tareas, excepto en fase atacar
+        (que ya lo maneja _actualizar_ia_enemiga directamente)."""
+        if self.ia_fase != "atacar":
+            unidad.ejecutar_tareas(todos_los_objetivos)
+
+    def _verificar_fin_partida(self):
+        """Muestra mensaje de victoria o derrota cuando cae un generador."""
+        if not hasattr(self, "_fin_partida"):
+            self._fin_partida = None
+
+        if self._fin_partida:
+            return
+
+        if self.generador_enemigo.vida <= 0:
+            self._fin_partida = "victoria"
+        elif self.generador_aliado.vida <= 0:
+            self._fin_partida = "derrota"
+
     def dibujar(self):
         # 🎥 1. Pintamos nuestro césped gigante desplazado según el movimiento de la cámara
         self.pantalla.blit(self.fondo_visual, (-self.camara_x, -self.camara_y))
 
-        # 2. Dibujamos las bases (generadores) restando la posición de la cámara
-        pygame.draw.rect(self.pantalla, self.generador_aliado.color,
-                         (self.generador_aliado.x - 20 - self.camara_x, self.generador_aliado.y - 20 - self.camara_y, 40, 40))
-        pygame.draw.rect(self.pantalla, self.generador_enemigo.color,
-                         (self.generador_enemigo.x - 20 - self.camara_x, self.generador_enemigo.y - 20 - self.camara_y, 40, 40))
+        # 2. Dibujamos los generadores (cuarteles centrales) con barra de vida
+        self.generador_aliado.dibujar(self.pantalla, self.fuente, self.camara_x, self.camara_y)
+        self.generador_enemigo.dibujar(self.pantalla, self.fuente, self.camara_x, self.camara_y)
 
         # 3. Dibujamos estructuras aplicando la cámara de forma segura
         for est in self.estructuras:
@@ -318,18 +450,9 @@ class Juego:
             # Restauramos sus coordenadas reales para no alterar la lógica matemática
             est.x, est.y = coord_real_x, coord_real_y
 
-        # 4. Dibujamos las unidades restándoles la posición de la cámara
+        # 4. Dibujamos las unidades con su propio método (cuerpo + barra de vida + selección)
         for u in self.mis_unidades:
-            screen_x = int(u.x - self.camara_x)
-            screen_y = int(u.y - self.camara_y)
-
-            # Optimización básica: solo dibujamos si se encuentran visibles dentro de la ventana
-            if -30 <= screen_x <= 830 and -30 <= screen_y <= 630:
-                pygame.draw.circle(self.pantalla, u.color, (screen_x, screen_y), u.radio)
-
-                # Dibujamos el anillo circular blanco si la unidad está seleccionada
-                if u.seleccionada and u.faccion == self.faccion:
-                    pygame.draw.circle(self.pantalla, (255, 255, 255), (screen_x, screen_y), u.radio + 2, 1)
+            u.dibujar(self.pantalla, self.camara_x, self.camara_y)
 
         # 5. Dibujamos el cuadro blanco de arrastre visual (si el jugador está seleccionando)
         if self.seleccionando:
@@ -360,52 +483,6 @@ class Juego:
         # 🆕 Solo se dibuja si el jugador presionó la 'B'
         if self.mostrar_menu_construccion:
             self._dibujar_menu_construccion()
-
-        if self.mostrar_menu_habilidades:
-            self._dibujar_menu_habilidades()
-
-    def _dibujar_menu_habilidades(self):
-        menu_x = 50
-        menu_y = 50
-        ancho_opcion = 220
-        alto_opcion = 50
-        separacion = 10
-
-        # Fondo semi-transparente del menú
-        pygame.draw.rect(self.pantalla, (30, 30, 30), (menu_x - 10, menu_y - 10, ancho_opcion + 20, 250), border_radius=8)
-
-        estados = self.habilidades.estado()
-        self.rects_habilidades.clear()  # Limpiar botones anteriores
-
-        for i, (id_hab, datos) in enumerate(estados.items()):
-            rect = pygame.Rect(menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
-            self.rects_habilidades[id_hab] = rect  # Guardamos el rect para el clic
-            
-            estado = datos["estado"]
-            costo = datos["costo"]
-            nombre = datos["nombre"]
-
-            # Lógica de colores
-            if estado == "activa":
-                color_fondo = (40, 100, 180)  # Azul: Ya la compraste
-                texto_costo = "Comprada"
-            elif estado == "disponible" and self.oro >= costo:
-                color_fondo = (40, 150, 40)   # Verde: Puedes comprarla
-                texto_costo = f"{costo} oro"
-            else:
-                color_fondo = (120, 40, 40)   # Rojo: Bloqueada o sin oro
-                texto_costo = f"{costo} oro (Bloqueada)"
-
-            # Dibujar botón
-            pygame.draw.rect(self.pantalla, color_fondo, rect, border_radius=6)
-            pygame.draw.rect(self.pantalla, (200, 200, 200), rect, width=1, border_radius=6)
-
-            # Textos (Asumiendo que tienes self.fuente disponible)
-            texto_nombre_render = self.fuente.render(nombre, True, (255, 255, 255))
-            texto_costo_render = self.fuente.render(texto_costo, True, (200, 200, 200))
-
-            self.pantalla.blit(texto_nombre_render, (rect.x + 10, rect.y + 5))
-            self.pantalla.blit(texto_costo_render, (rect.x + 10, rect.y + 25))
 
     def _dibujar_menu_construccion(self):
         menu_x = 660
@@ -443,7 +520,7 @@ class Juego:
                 tag = self.fuente.render("★ EXCLUSIVO", True, (200, 140, 255))
                 self.pantalla.blit(tag, (rect.x + 4, rect.y + 1))
                 texto_nombre = self.fuente.render(nombre, True, (230, 200, 255))
-                texto_costo = self.fuente.render(f"{costo} oro  {desc}", True, (200, 180, 80))
+                texto_costo = self.fuente.render(f"{costo}o  {desc}", True, (200, 180, 80))
                 self.pantalla.blit(texto_nombre, (rect.x + 4, rect.y + 13))
                 self.pantalla.blit(texto_costo, (rect.x + 4, rect.y + 27))
             else:
@@ -459,3 +536,45 @@ class Juego:
         txt_facciones = self.fuente.render(
             f"{self.faccion.capitalize()} vs {self.faccion_enemigo.capitalize()}", True, (255, 255, 255))
         self.pantalla.blit(txt_facciones, (20, 48))
+
+        # Indicador de fase de la IA enemiga
+        colores_fase = {
+            "defender":   (100, 180, 100),
+            "reagrupar":  (220, 180,  40),
+            "atacar":     (220,  60,  60),
+        }
+        etiquetas_fase = {
+            "defender":  "Enemigo: esperando",
+            "reagrupar": "Enemigo: reagrupando...",
+            "atacar":    "Enemigo: ¡ATACANDO!",
+        }
+        fase = getattr(self, "ia_fase", "defender")
+        color_fase = colores_fase.get(fase, (200, 200, 200))
+        txt_fase = self.fuente.render(etiquetas_fase.get(fase, ""), True, color_fase)
+        self.pantalla.blit(txt_fase, (20, 68))
+
+        # Barra de cuenta atrás del próximo ataque (solo en fase defender)
+        if fase == "defender":
+            intervalo = max(1, self.ia_intervalo_ataque)
+            progreso = min(1.0, self.ia_timer / intervalo)
+            bx, by, bw, bh = 20, 84, 140, 6
+            pygame.draw.rect(self.pantalla, (60, 30, 30), (bx, by, bw, bh), border_radius=3)
+            pygame.draw.rect(self.pantalla, (200, 60, 60),
+                             (bx, by, int(bw * progreso), bh), border_radius=3)
+
+        # Overlay de fin de partida
+        fin = getattr(self, "_fin_partida", None)
+        if fin:
+            overlay = pygame.Surface((800, 600), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            self.pantalla.blit(overlay, (0, 0))
+
+            fuente_fin = pygame.font.SysFont(None, 72)
+            if fin == "victoria":
+                txt = fuente_fin.render("¡VICTORIA!", True, (80, 255, 120))
+            else:
+                txt = fuente_fin.render("DERROTA", True, (255, 80, 80))
+            self.pantalla.blit(txt, ((800 - txt.get_width()) // 2, 220))
+
+            sub = self.fuente_grande.render("Cierra la ventana para salir", True, (200, 200, 200))
+            self.pantalla.blit(sub, ((800 - sub.get_width()) // 2, 310))
