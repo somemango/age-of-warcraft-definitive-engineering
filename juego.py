@@ -1,18 +1,27 @@
 import pygame
 from unidades import Tropa, Generador
-from estructuras import Cuartel, Mina, Granja
+from estructuras import Cuartel, Mina, Granja, BaseDatos, Torreta, Antena, MinaMejorada
 from habilidades import ArbolHabilidades
 
-TIPOS_EDIFICIO = {
+# Estructuras disponibles para todas las facciones
+TIPOS_EDIFICIO_BASE = {
     "Cuartel": Cuartel,
     "Mina": Mina,
     "Granja": Granja,
 }
 
-COSTOS_EDIFICIO = {
+COSTOS_EDIFICIO_BASE = {
     "Cuartel": 150,
     "Mina": 100,
     "Granja": 80,
+}
+
+# Estructura exclusiva por facción: faccion → (nombre_clave, clase, costo, descripcion)
+EDIFICIO_EXCLUSIVO = {
+    "sistemas":           ("BaseDatos",     BaseDatos,     180, ""),
+    "civil":              ("Torreta",       Torreta,       220, ""),
+    "telecomunicaciones": ("Antena",        Antena,        160, ""),
+    "industrial":         ("MinaMejorada",  MinaMejorada,  200, ""),
 }
 
 
@@ -68,6 +77,20 @@ class Juego:
 
         # Inicializar árbol de habilidades
         self.habilidades = ArbolHabilidades(self.faccion, self)
+
+        # Construir catálogo de edificios: base + exclusivo de la facción
+        self.tipos_edificio = dict(TIPOS_EDIFICIO_BASE)
+        self.costos_edificio = dict(COSTOS_EDIFICIO_BASE)
+        self.descripciones_edificio = {
+            "Cuartel": "Entrena tropas",
+            "Mina": "Genera oro",
+            "Granja": "+5 límite tropas",
+        }
+        if self.faccion in EDIFICIO_EXCLUSIVO:
+            nombre, clase, costo, desc = EDIFICIO_EXCLUSIVO[self.faccion]
+            self.tipos_edificio[nombre] = clase
+            self.costos_edificio[nombre] = costo
+            self.descripciones_edificio[nombre] = desc
 
         # Fuentes
         self.fuente = pygame.font.SysFont(None, 20)
@@ -190,26 +213,24 @@ class Juego:
 
     def _procesar_clic_menu(self, pos):
         menu_x = 660
-        menu_y = 410
-        ancho_opcion = 120
-        alto_opcion = 40
-        separacion = 10
+        menu_y = 380
+        ancho_opcion = 130
+        alto_opcion = 44
+        separacion = 8
 
-        opciones = list(TIPOS_EDIFICIO.keys())
+        opciones = list(self.tipos_edificio.keys())
         for i, nombre in enumerate(opciones):
             rect = pygame.Rect(menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
             if rect.collidepoint(pos):
-                costo = COSTOS_EDIFICIO[nombre]
+                costo = self.costos_edificio[nombre]
                 if self.oro >= costo:
                     self.oro -= costo
-                    ClaseEstructura = TIPOS_EDIFICIO[nombre]
+                    ClaseEstructura = self.tipos_edificio[nombre]
 
-                    # 🆕 Colocamos la estructura ("los cimientos") en el mapa
                     nueva_est = ClaseEstructura(self.ultimo_destino_x, self.ultimo_destino_y, self.faccion)
                     self.estructuras.append(nueva_est)
                     print(f"Comprado {nombre}. Oro restante: {self.oro}")
 
-                    # 🆕 Mandamos a los obreros seleccionados a construir
                     for u in self.mis_unidades:
                         if u.seleccionada and u.faccion == self.faccion:
                             u.objetivo = nueva_est
@@ -217,6 +238,7 @@ class Juego:
                             u.destinoX = nueva_est.x
                             u.destinoY = nueva_est.y
                             u.estado = "moviendose"
+                    break
                 else:
                     print("No tienes suficiente oro.")
 
@@ -311,26 +333,48 @@ class Juego:
 
     def _dibujar_menu_construccion(self):
         menu_x = 660
-        menu_y = 410
-        ancho_opcion = 120
-        alto_opcion = 40
-        separacion = 10
+        menu_y = 380
+        ancho_opcion = 130
+        alto_opcion = 44
+        separacion = 8
 
-        opciones = list(TIPOS_EDIFICIO.keys())
+        # Nombre de la estructura exclusiva de esta facción (si la hay)
+        exclusivo_nombre = None
+        if self.faccion in EDIFICIO_EXCLUSIVO:
+            exclusivo_nombre = EDIFICIO_EXCLUSIVO[self.faccion][0]
+
+        opciones = list(self.tipos_edificio.keys())
         for i, nombre in enumerate(opciones):
             rect = pygame.Rect(menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
-            costo = COSTOS_EDIFICIO[nombre]
+            costo = self.costos_edificio[nombre]
+            desc = self.descripciones_edificio.get(nombre, "")
             puede_pagar = self.oro >= costo
-            color_fondo = (40, 80, 40) if puede_pagar else (80, 40, 40)
-            color_borde = (100, 200, 100) if puede_pagar else (200, 100, 100)
+            es_exclusivo = (nombre == exclusivo_nombre)
+
+            # Color especial para la estructura de facción
+            if es_exclusivo:
+                color_fondo = (60, 40, 80) if puede_pagar else (80, 40, 40)
+                color_borde = (200, 100, 255) if puede_pagar else (200, 100, 100)
+            else:
+                color_fondo = (40, 80, 40) if puede_pagar else (80, 40, 40)
+                color_borde = (100, 200, 100) if puede_pagar else (200, 100, 100)
 
             pygame.draw.rect(self.pantalla, color_fondo, rect, border_radius=6)
             pygame.draw.rect(self.pantalla, color_borde, rect, width=1, border_radius=6)
 
-            texto_nombre = self.fuente.render(nombre, True, (230, 230, 230))
-            texto_costo = self.fuente.render(f"{costo} oro", True, (200, 180, 80))
-            self.pantalla.blit(texto_nombre, (rect.x + 8, rect.y + 5))
-            self.pantalla.blit(texto_costo, (rect.x + 8, rect.y + 20))
+            # Etiqueta "EXCLUSIVO" en pequeño
+            if es_exclusivo:
+                tag = self.fuente.render("★ EXCLUSIVO", True, (200, 140, 255))
+                self.pantalla.blit(tag, (rect.x + 4, rect.y + 1))
+                texto_nombre = self.fuente.render(nombre, True, (230, 200, 255))
+                texto_costo = self.fuente.render(f"{costo} oro  {desc}", True, (200, 180, 80))
+                self.pantalla.blit(texto_nombre, (rect.x + 4, rect.y + 13))
+                self.pantalla.blit(texto_costo, (rect.x + 4, rect.y + 27))
+            else:
+                texto_nombre = self.fuente.render(nombre, True, (230, 230, 230))
+                texto_costo = self.fuente.render(f"{costo} oro  {desc}", True, (200, 180, 80))
+                self.pantalla.blit(texto_nombre, (rect.x + 6, rect.y + 5))
+                self.pantalla.blit(texto_costo, (rect.x + 6, rect.y + 22))
 
     def _dibujar_hud(self):
         txt_oro = self.fuente_grande.render(f"Oro: {int(self.oro)}", True, (255, 215, 0))

@@ -128,3 +128,154 @@ class Granja(Estructura):
             juego.limite_tropas = getattr(
                 juego, "limite_tropas", 10) + self.limite_extra
             self._bonus_aplicado = True
+
+
+# ----------------------------------------------------------------------
+# Estructuras exclusivas por facción
+# ----------------------------------------------------------------------
+
+class BaseDatos(Estructura):
+    
+
+    COLOR_EDIFICIO = (60, 120, 200)
+    def __init__(self, x, y, faccion):
+        super().__init__(x, y, faccion, costo=180)
+
+    def al_construirse(self):
+        self._buff_aplicado = False
+
+    def actualizar(self, juego):
+        if not self.construida:
+            return
+
+
+    def dibujar(self, pantalla, fuente):
+        super().dibujar(pantalla, fuente)
+        if self.construida:
+            # Icono: dos cilindros pequeños (representan discos de BD)
+            cx, cy = self.x, self.y
+            for i, dy in enumerate([-7, 5]):
+                pygame.draw.ellipse(pantalla, (100, 180, 255), (cx - 12, cy + dy - 4, 24, 8))
+                pygame.draw.ellipse(pantalla, (160, 220, 255), (cx - 12, cy + dy - 4, 24, 8), 1)
+
+
+class Torreta(Estructura):
+    
+
+    COLOR_EDIFICIO = (160, 80, 60)
+            
+    def __init__(self, x, y, faccion):
+        super().__init__(x, y, faccion, costo=220)
+    def actualizar(self, juego):
+        if not self.construida:
+            return
+
+        if self.timer > 0:
+            self.timer -= 1
+
+    def dibujar(self, pantalla, fuente):
+        super().dibujar(pantalla, fuente)
+        if self.construida:
+            # Base circular de la torreta
+            pygame.draw.circle(pantalla, (120, 60, 40), (self.x, self.y), 14)
+            pygame.draw.circle(pantalla, (200, 100, 80), (self.x, self.y), 14, 2)
+
+            # Cañón apuntando al objetivo (o hacia arriba si no hay)
+            if self.objetivo:
+                dx = self.objetivo.x - self.x
+                dy = self.objetivo.y - self.y
+                vec = pygame.math.Vector2(dx, dy)
+                if vec.length() > 0:
+                    vec.normalize_ip()
+                    vec *= 18
+            else:
+                vec = pygame.math.Vector2(0, -18)
+
+            pygame.draw.line(pantalla, (220, 220, 220),
+                             (self.x, self.y),
+                             (int(self.x + vec.x), int(self.y + vec.y)), 4)
+
+            # Círculo de rango (tenue)
+            rango_surf = pygame.Surface((self.rango * 2, self.rango * 2), pygame.SRCALPHA)
+            pygame.draw.circle(rango_surf, (255, 80, 60, 25),
+                               (self.rango, self.rango), self.rango)
+            pygame.draw.circle(rango_surf, (255, 80, 60, 60),
+                               (self.rango, self.rango), self.rango, 1)
+            pantalla.blit(rango_surf, (self.x - self.rango, self.y - self.rango))
+
+            # Flash de disparo
+            if self.timer > self.cooldown - 5 and self.objetivo:
+                pygame.draw.line(pantalla, (255, 220, 80),
+                                 (self.x, self.y),
+                                 (self.objetivo.x, self.objetivo.y), 2)
+
+
+class Antena(Estructura):
+    
+
+    COLOR_EDIFICIO = (80, 180, 160)
+       # Para animar el pulso
+    def __init__(self, x, y, faccion):
+        super().__init__(x, y, faccion, costo=160)
+    def actualizar(self, juego):
+        if not self.construida:
+            return
+
+
+    def dibujar(self, pantalla, fuente):
+        super().dibujar(pantalla, fuente)
+        if self.construida:
+            # Palo vertical de la antena
+            pygame.draw.line(pantalla, (160, 230, 210),
+                             (self.x, self.y + 12), (self.x, self.y - 20), 3)
+            # Brazos laterales en V
+            pygame.draw.line(pantalla, (160, 230, 210),
+                             (self.x, self.y - 8), (self.x - 14, self.y - 20), 2)
+            pygame.draw.line(pantalla, (160, 230, 210),
+                             (self.x, self.y - 8), (self.x + 14, self.y - 20), 2)
+            # Punto parpadeante en la punta
+            color_punto = (80, 255, 200) if (self.timer_pulso // 30) % 2 == 0 else (40, 120, 100)
+            pygame.draw.circle(pantalla, color_punto, (self.x, self.y - 20), 3)
+
+            # Onda del pulso visual
+            if self._pulso_visual > 0:
+                alpha = int(180 * (self._pulso_visual / self.rango_pulso))
+                radio_actual = self.rango_pulso - self._pulso_visual
+                pulso_surf = pygame.Surface(
+                    (self.rango_pulso * 2, self.rango_pulso * 2), pygame.SRCALPHA)
+                pygame.draw.circle(pulso_surf, (80, 255, 200, alpha),
+                                   (self.rango_pulso, self.rango_pulso), radio_actual, 2)
+                pantalla.blit(pulso_surf, (self.x - self.rango_pulso, self.y - self.rango_pulso))
+
+
+class MinaMejorada(Estructura):
+    
+
+    COLOR_EDIFICIO = (200, 140, 40)
+    def __init__(self, x, y, faccion):
+        super().__init__(x, y, faccion, costo=200)
+        
+    def actualizar(self, juego):
+        if not self.construida:
+            return
+
+    def dibujar(self, pantalla, fuente):
+        super().dibujar(pantalla, fuente)
+        if self.construida:
+            # Engranaje central simplificado (hexágono)
+            import math
+            cx, cy, r = self.x, self.y, 10
+            puntos = [
+                (cx + r * math.cos(math.radians(60 * i - 30)),
+                 cy + r * math.sin(math.radians(60 * i - 30)))
+                for i in range(6)
+            ]
+            pygame.draw.polygon(pantalla, (255, 180, 40), puntos)
+            pygame.draw.polygon(pantalla, (255, 220, 100), puntos, 2)
+            pygame.draw.circle(pantalla, (60, 40, 20), (cx, cy), 4)
+
+            # Dibujar partículas de chispa
+            for p in self._particulas:
+                alpha = int(255 * (p["vida"] / 30))
+                color = (255, min(255, 150 + alpha // 2), 0)
+                pygame.draw.circle(pantalla, color, (int(p["x"]), int(p["y"])), 2)
