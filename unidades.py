@@ -93,11 +93,22 @@ class Tropa:
 
     def dibujar(self, pantalla, fuente=None, cam_x=0, cam_y=0):
         if self.vida <= 0: return
-        pos_x = int(self.x - cam_x)
-        pos_y = int(self.y - cam_y)
+        pos_x, pos_y = int(self.x - cam_x), int(self.y - cam_y)
+        
+        # Dibujar la unidad (círculo)
         pygame.draw.circle(pantalla, self.color, (pos_x, pos_y), self.radio)
-        if self.seleccionada:
-            pygame.draw.circle(pantalla, (255, 255, 255), (pos_x, pos_y), self.radio + 3, 1)
+        
+      
+        ancho_barra = 30
+        x_barra = pos_x - (ancho_barra // 2)
+        y_barra = pos_y - 25 # Posición sobre la unidad
+        
+        
+        pygame.draw.rect(pantalla, (60, 60, 60), (x_barra, y_barra, ancho_barra, 5))
+        
+       
+        proporcion = max(0, min(1, self.vida / 100.0))
+        pygame.draw.rect(pantalla, (220, 50, 50), (x_barra, y_barra, int(ancho_barra * proporcion), 5))
 
 class Obrero(Tropa):
     def __init__(self, x, y, faccion):
