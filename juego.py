@@ -36,6 +36,10 @@ class Juego:
         self.estructuras = []
         self.mostrar_menu_construccion = False
 
+        self.habilidades = ArbolHabilidades(self.faccion, self)
+        self.mostrar_menu_habilidades = False
+        self.rects_habilidades = {}
+
         # =========================================================================
         # 🎥 CONFIGURACIÓN DE CÁMARA Y MAPA GIGANTE PROVISIONAL
         # =========================================================================
@@ -46,8 +50,8 @@ class Juego:
 
         # Creamos una superficie verde gigante en memoria como fondo provisional
         self.fondo_visual = pygame.Surface((self.ancho_mapa, self.alto_mapa))
-        self.fondo_visual.fill((34, 139, 34)) # Verde pasto
-        
+        self.fondo_visual.fill((34, 139, 34))  # Verde pasto
+
         # Dibujamos una cuadrícula cada 100 píxeles para notar el movimiento del scroll
         for x in range(0, self.ancho_mapa, 100):
             pygame.draw.line(self.fondo_visual, (45, 150, 45), (x, 0), (x, self.alto_mapa), 2)
@@ -75,9 +79,6 @@ class Juego:
         self.mis_unidades.append(
             Tropa(150, 150, self.faccion, 100, (0, 255, 0)))
 
-        # Inicializar árbol de habilidades
-        self.habilidades = ArbolHabilidades(self.faccion, self)
-
         # Construir catálogo de edificios: base + exclusivo de la facción
         self.tipos_edificio = dict(TIPOS_EDIFICIO_BASE)
         self.costos_edificio = dict(COSTOS_EDIFICIO_BASE)
@@ -95,6 +96,29 @@ class Juego:
         # Fuentes
         self.fuente = pygame.font.SysFont(None, 20)
         self.fuente_grande = pygame.font.SysFont(None, 28)
+
+        # modificadores para cada faccion
+        self.habilidades = ArbolHabilidades(self.faccion, self)
+
+        # sistemas
+        self.mod_danno = 1.0
+        self.mod_entrena = 1.0
+        self.mod_base_datos = False
+
+        # civil
+        self.mod_torreta_cemento = False
+        self.mod_bufo_vida = 1.0
+        self.mod_planificacion_urbana = 1.0
+
+        # industrial
+        self.mod_mejor_mina = 1.0
+        self.mod_linea_ensamblaje = 1.0
+        self.mod_manufactura = 1.0
+
+        # telecom
+        self.mod_antena_amplificadora = 1.0
+        self.mod_banda_ancha = 1.0
+        self.timer_antena_suprema = 0
 
     def actualizar_camara(self):
         """Mueve la cámara de forma automática si el mouse toca los bordes de la pantalla."""
@@ -243,6 +267,12 @@ class Juego:
                     print("No tienes suficiente oro.")
 
     def actualizar(self):
+        # para la antena suprema de telecom
+        if self.timer_antena_suprema > 0:
+            self.timer_antena_suprema -= 1
+            if self.timer_antena_suprema == 0:
+                self.mod_antena_suprema = False
+
         # ⚔️ Lógica de combate y movimiento corregida
         # 🎥 Movemos la cámara
         self.actualizar_camara()
@@ -254,14 +284,14 @@ class Juego:
         for unidad in self.mis_unidades:
             if unidad.faccion == self.faccion:
                 # Tus tropas solo hacen lo que tú les ordenes
-                unidad.ejecutar_tareas(self.mis_unidades)
+                unidad.ejecutar_tareas(self.mis_unidades, self)
             else:
                 # Los enemigos tienen IA automática: buscan y atacan
                 enemigo = unidad.buscar_enemigo_mas_cercano(self.mis_unidades)
                 if enemigo:
                     unidad.tarea = "atacar"
                     unidad.objetivo_combate = enemigo
-                    unidad.ejecutar_tareas(self.mis_unidades)
+                    unidad.ejecutar_tareas(self.mis_unidades, self)
 
         for est in self.estructuras:
             est.actualizar(self)
@@ -330,6 +360,52 @@ class Juego:
         # 🆕 Solo se dibuja si el jugador presionó la 'B'
         if self.mostrar_menu_construccion:
             self._dibujar_menu_construccion()
+
+        if self.mostrar_menu_habilidades:
+            self._dibujar_menu_habilidades()
+
+    def _dibujar_menu_habilidades(self):
+        menu_x = 50
+        menu_y = 50
+        ancho_opcion = 220
+        alto_opcion = 50
+        separacion = 10
+
+        # Fondo semi-transparente del menú
+        pygame.draw.rect(self.pantalla, (30, 30, 30), (menu_x - 10, menu_y - 10, ancho_opcion + 20, 250), border_radius=8)
+
+        estados = self.habilidades.estado()
+        self.rects_habilidades.clear()  # Limpiar botones anteriores
+
+        for i, (id_hab, datos) in enumerate(estados.items()):
+            rect = pygame.Rect(menu_x, menu_y + i * (alto_opcion + separacion), ancho_opcion, alto_opcion)
+            self.rects_habilidades[id_hab] = rect  # Guardamos el rect para el clic
+            
+            estado = datos["estado"]
+            costo = datos["costo"]
+            nombre = datos["nombre"]
+
+            # Lógica de colores
+            if estado == "activa":
+                color_fondo = (40, 100, 180)  # Azul: Ya la compraste
+                texto_costo = "Comprada"
+            elif estado == "disponible" and self.oro >= costo:
+                color_fondo = (40, 150, 40)   # Verde: Puedes comprarla
+                texto_costo = f"{costo} oro"
+            else:
+                color_fondo = (120, 40, 40)   # Rojo: Bloqueada o sin oro
+                texto_costo = f"{costo} oro (Bloqueada)"
+
+            # Dibujar botón
+            pygame.draw.rect(self.pantalla, color_fondo, rect, border_radius=6)
+            pygame.draw.rect(self.pantalla, (200, 200, 200), rect, width=1, border_radius=6)
+
+            # Textos (Asumiendo que tienes self.fuente disponible)
+            texto_nombre_render = self.fuente.render(nombre, True, (255, 255, 255))
+            texto_costo_render = self.fuente.render(texto_costo, True, (200, 200, 200))
+
+            self.pantalla.blit(texto_nombre_render, (rect.x + 10, rect.y + 5))
+            self.pantalla.blit(texto_costo_render, (rect.x + 10, rect.y + 25))
 
     def _dibujar_menu_construccion(self):
         menu_x = 660

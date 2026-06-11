@@ -41,7 +41,7 @@ class Tropa:
 
         return enemigo_mas_cercano
 
-    def ejecutar_tareas(self, todas_las_unidades):
+    def ejecutar_tareas(self, todas_las_unidades, juego):
         # Manejo pasivo del timer de ataque
         if self.timer_ataque > 0:
             self.timer_ataque -= 1
@@ -60,7 +60,7 @@ class Tropa:
                 self.destinoX = self.objetivo.x
                 self.destinoY = self.objetivo.y
                 self.estado = "moviendose"
-                self.movimiento(todas_las_unidades)
+                self.movimiento(todas_las_unidades, self)
 
         # 2. ORDEN: ATACAR
         elif self.tarea == "atacar" and self.objetivo_combate:
@@ -69,7 +69,7 @@ class Tropa:
                 if distancia > self.rango_ataque:
                     self.destinoX = self.objetivo_combate.x
                     self.destinoY = self.objetivo_combate.y
-                    self.movimiento(todas_las_unidades)
+                    self.movimiento(todas_las_unidades, self)
                 else:
                     if self.timer_ataque == 0:
                         self.objetivo_combate.vida -= self.dano
@@ -81,9 +81,9 @@ class Tropa:
 
         # 3. SIN ÓRDENES ESPECIALES (Solo caminar o quedarse quieto)
         else:
-            self.movimiento(todas_las_unidades)
+            self.movimiento(todas_las_unidades, self)
 
-    def movimiento(self, todas_las_unidades):
+    def movimiento(self, todas_las_unidades, juego):
         posicion_actual = pygame.math.Vector2(self.x, self.y)
         fuerza_separacion = pygame.math.Vector2(0, 0)
 
@@ -108,7 +108,8 @@ class Tropa:
             else:
                 if distancia_destino > 0:
                     direccion.normalize_ip()
-                    vector_movimiento = direccion * self.velocidad
+                    vel_final = self.velocidad * getattr(juego, "mod_banda_ancha", 1.0)
+                    vector_movimiento = direccion * vel_final
                 else:
                     vector_movimiento = pygame.math.Vector2(0, 0)
 

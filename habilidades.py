@@ -15,43 +15,93 @@ ARBOLES = {
     "sistemas": {
         "algoritmo_eficiente": {
             "nombre": "Algoritmo eficiente",
-            "costo": 0,
+            "costo": 100,
             "requiere": None,
-            "efecto": None,         # nodo raíz, solo desbloquea ramas
+            # dano de las unidades +20%
+            "efecto": lambda juego: setattr(juego, "mod_danno", 1.20),
         },
         "compilador": {
-            "nombre": "Compilador optimizado",
-            "costo": 200,
+            "nombre": "Compilador",
+            "costo": 500,
             "requiere": "algoritmo_eficiente",
             # +30% velocidad
-            "efecto": lambda juego: setattr(juego, "mod_entrena", 1.43),
+            "efecto": lambda juego: setattr(juego, "mod_entrena", 1.20),
         },
-        "red_distribuida": {
-            "nombre": "Red distribuida",
-            "costo": 300,
-            "requiere": "algoritmo_eficiente",
-            # +50% oro
-            "efecto": lambda juego: setattr(juego, "mod_oro", 1.5),
+        "base_de_datos": {
+            "nombre": "Base de Datos",
+            "costo": 1000,
+            "requiere": "compilador",
+            # habilita bases de datos
+            "efecto": lambda juego: setattr(juego, "mod_base_datos", True),
         },
     },
-    "hardware": {
-        "overclock": {
-            "nombre": "Overclock",
+    "civil": {
+        "torreta_cemento": {
+            "nombre": "Torreta de Cemento",
+            "costo": 120,
+            "requiere": None,
+            # habilita la torreta de cemento
+            "efecto": lambda juego: setattr(juego, "mod_torreta_cemento", True),
+        },
+        "reforzamiento": {
+            "nombre": "Reforzamiento",
+            "costo": 500,
+            "requiere": "torreta_cemento",
+            # hace que las unidades tengan 1.5 veces mas vida
+            "efecto": lambda juego: _buff_vida_tropas(juego, 1.5),
+        },
+        "planificacion_urbana": {
+            "nombre": "Planificacion Urbana",
+            "costo": 300,
+            "requiere": "reforzamiento",
+            # aumenta en 1.3 veces la vida de todas las estructuras
+            "efecto": lambda juego: setattr(juego, "mod_planificacion_urbana", 1.3),
+        },
+    },
+    "industrial": {
+        "mejor_mina": {
+            "nombre": "Minas Mejoradas",
             "costo": 0,
             "requiere": None,
-            "efecto": None,
+            # hace que las minas produzcan mas oro
+            "efecto": lambda juego: setattr(juego, "mod_mejor_mina", 1.2),
         },
-        "refrigeracion": {
-            "nombre": "Refrigeración líquida",
+        "linea_ensamblaje": {
+            "nombre": "Linea de Ensamblaje",
+            "costo": 250,
+            "requiere": "mejor_mina",
+            # hace que las estructuras tarden menos en hacerse
+            "efecto": lambda juego: setattr(juego, "mod_linea_ensamblaje", 0.8),
+        },
+        "manufactura": {
+            "nombre": "Manufactura",
+            "costo": 1100,
+            "requiere": "linea_ensamblaje",
+            # hace que las unidades se produzcan el doble de rapido
+            "efecto": lambda juego: setattr(juego, "mod_manufactura", 2.0),
+        },
+    },
+    "telecomunicaciones": {
+        "antena_amplificadora": {
+            "nombre": "Antena Amplificadora",
             "costo": 200,
-            "requiere": "overclock",
-            "efecto": lambda juego: _buff_vida_tropas(juego, 1.2),
+            "requiere": None,
+            # hace que las unidades ataquen con 3 veces mas rango
+            "efecto": lambda juego: setattr(juego, "mod_antena_amplificadora", 3.0),
         },
-        "multiprocesador": {
-            "nombre": "Multiprocesador",
+        "banda_ancha": {
+            "nombre": "Banda Ancha",
+            "costo": 350,
+            "requiere": "antena_amplificadora",
+            # aumenta la velocidad de movimiento en las tropas x1.5
+            "efecto": lambda juego: setattr(juego, "mod_banda_ancha", 1.5)
+        },
+        "antena_suprema": {
+            "nombre": "Antena Suprema",
             "costo": 300,
-            "requiere": "overclock",
-            "efecto": lambda juego: setattr(juego, "tropas_por_cola", 2),
+            "requiere": "banda_ancha",
+            # invalida la produccion de recursos del enemigo por unos segundos
+            "efecto": lambda juego: setattr(juego, "timer_antena_suprema", 600),
         },
     },
 }
@@ -74,11 +124,6 @@ class ArbolHabilidades:
         self.juego = juego
         self.arbol = ARBOLES.get(faccion, {})
         self.desbloqueadas = set()
-
-        # Desbloquear nodo raíz automáticamente
-        for id_hab, datos in self.arbol.items():
-            if datos["requiere"] is None:
-                self.desbloqueadas.add(id_hab)
 
     def puede_desbloquear(self, id_hab):
         """Devuelve True si el jugador cumple los requisitos."""

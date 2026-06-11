@@ -26,25 +26,56 @@ estado = "MENU"  # Valores posibles: "MENU" o "JUGANDO"
 juego = None
 run = True
 
+# --- Bucle Principal en main.py ---
 while run:
     eventos = pygame.event.get()
     for event in eventos:
         if event.type == pygame.QUIT:
             run = False
 
+        # =========================================================================
+        # 🖥️ ESTADO: MENÚ DE INICIO
+        # =========================================================================
         if estado == "MENU":
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = event.pos
                 for faccion, rect in botones.items():
                     if rect.collidepoint(mouse_pos):
                         faccion_jugador = faccion
+                        # El enemigo elige una facción aleatoria distinta
                         faccion_enemigo = random.choice(facciones_disponibles)
+                        while faccion_enemigo == faccion_jugador:
+                            faccion_enemigo = random.choice(facciones_disponibles)
+                        
+                        # Inicializamos la partida con total seguridad
                         juego = Juego(pantalla, faccion_jugador, faccion_enemigo)
                         estado = "JUGANDO"
                         break
 
+        # =========================================================================
+        # ⚔️ ESTADO: EN PARTIDA (JUGANDO)
+        # =========================================================================
         elif estado == "JUGANDO":
-            juego.procesar_eventos(event)
+            # 1. Teclado: Abrir/Cerrar menú de habilidades con la 'H'
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_h:
+                juego.mostrar_menu_habilidades = not juego.mostrar_menu_habilidades
+                continue  # Pasamos al siguiente evento
+
+            # 2. Interceptamos clics izquierdos si el menú de habilidades está abierto
+            clic_en_habilidad = False
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if juego.mostrar_menu_habilidades:
+                    for id_hab, rect in juego.rects_habilidades.items():
+                        if rect.collidepoint(event.pos):
+                            if juego.habilidades.desbloquear(id_hab):
+                                print(f"Habilidad '{id_hab}' comprada con éxito.")
+                            clic_en_habilidad = True
+                            break  # Rompemos el ciclo de botones de habilidades
+
+            # 3. Si NO fue un clic en el menú de habilidades, se lo enviamos al juego normal
+            # Aquí entran la selección de unidades, movimiento con clic derecho, scroll, etc.
+            if not clic_en_habilidad:
+                juego.procesar_eventos(event)
 
     # --- Actualización y renderizado según el estado ---
     if estado == "MENU":
