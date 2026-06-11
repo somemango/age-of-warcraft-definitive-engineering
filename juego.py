@@ -99,14 +99,38 @@ class Juego:
             "Mina": "Genera oro",
             "Granja": "+5 límite tropas",
         }
-        if self.faccion in EDIFICIO_EXCLUSIVO:
-            nombre, clase, costo, desc = EDIFICIO_EXCLUSIVO[self.faccion]
-            self.tipos_edificio[nombre] = clase
-            self.costos_edificio[nombre] = costo
-            self.descripciones_edificio[nombre] = desc
+        # Los edificios exclusivos que requieren habilidad se desbloquean
+        # a través del árbol. Solo los que NO requieren habilidad se agregan aquí.
+        # Ver _desbloquear_edificio_exclusivo() que lo llaman los efectos de habilidad.
+        EXCLUSIVOS_SIN_HABILIDAD = {}  # ninguno arranca desbloqueado por defecto
+        # (reservado para futura configuración por facción)
 
         self.fuente = pygame.font.SysFont(None, 20)
         self.fuente_grande = pygame.font.SysFont(None, 28)
+
+        # valores por defecto de las habilidades
+        self.mod_danno = 1.0
+        self.mod_entrena = 1.0
+        self.mod_vida_tropas = 1.0
+        self.mod_planificacion_urbana = 1.0
+        self.mod_mejor_mina = 1.0
+        self.mod_linea_ensamblaje = 1.0
+        self.mod_manufactura = 1.0
+        self.mod_antena_amplificadora = 1.0
+        self.mod_banda_ancha = 1.0
+        self.timer_antena_suprema = 0
+        self.mod_base_datos = False
+        self.mod_torreta_cemento = False
+
+    def _desbloquear_edificio_exclusivo(self):
+        """Agrega el edificio exclusivo de la facción al menú de construcción.
+        Solo se llama desde los efectos de habilidad que lo requieren."""
+        if self.faccion in EDIFICIO_EXCLUSIVO:
+            nombre, clase, costo, desc = EDIFICIO_EXCLUSIVO[self.faccion]
+            if nombre not in self.tipos_edificio:
+                self.tipos_edificio[nombre] = clase
+                self.costos_edificio[nombre] = costo
+                self.descripciones_edificio[nombre] = desc
 
     def actualizar_camara(self):
         mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -141,8 +165,8 @@ class Juego:
         minutos = int(tiempo_transcurrido // 60)
         self._gestionar_escalado_dificultad(minutos)
 
-        self.generador_aliado.actualizar(self.mis_unidades)
-        self.generador_enemigo.actualizar(self.mis_unidades)
+        self.generador_aliado.actualizar(self.mis_unidades, self)
+        self.generador_enemigo.actualizar(self.mis_unidades, self)
 
         objetivos_para_aliados  = self.mis_unidades + [self.generador_enemigo]
         objetivos_para_enemigos = self.mis_unidades + [self.generador_aliado]
@@ -390,12 +414,72 @@ class Juego:
             self._dibujar_arbol_habilidades()
 
     def _dibujar_arbol_habilidades(self):
-        """Muestra de manera simplificada las opciones del árbol de habilidades."""
-        overlay = pygame.Surface((400, 300))
-        overlay.fill((35, 35, 60))
-        self.pantalla.blit(overlay, (200, 150))
-        txt = self.fuente_grande.render("[Menú Habilidades Activo]", True, (255, 255, 255))
-        self.pantalla.blit(txt, (220, 170))
+        """Dibuja el árbol de habilidades interactivo de la facción del jugador."""
+        PANEL_X, PANEL_Y = 100, 80
+        PANEL_W, PANEL_H = 600, 460
+        CARD_W, CARD_H = 170, 70
+        COLS = 3
+        PAD_X, PAD_Y = 20, 20
+        START_X = PANEL_X + PAD_X
+        START_Y = PANEL_Y + 54
+
+        # Fondo semitransparente
+        overlay = pygame.Surface((PANEL_W, PANEL_H), pygame.SRCALPHA)
+        overlay.fill((20, 20, 45, 220))
+        self.pantalla.blit(overlay, (PANEL_X, PANEL_Y))
+        pygame.draw.rect(self.pantalla, (100, 100, 200),
+                         (PANEL_X, PANEL_Y, PANEL_W, PANEL_H), 2, border_radius=8)
+
+        # Título
+        txt_titulo = self.fuente_grande.render(
+            f"ÁRBOL DE HABILIDADES — {self.faccion.upper()}  [H para cerrar]",
+            True, (200, 200, 255))
+        self.pantalla.blit(txt_titulo, (PANEL_X + 10, PANEL_Y + 10))
+
+        estado_habs = self.habilidades.estado()
+        self.rects_habilidades = {}
+
+        COLORES = {
+            "activa":      {"fondo": (30, 80, 30),  "borde": (80, 220, 80),  "texto": (150, 255, 150)},
+            "disponible":  {"fondo": (50, 50, 100), "borde": (120, 120, 255),"texto": (200, 200, 255)},
+            "bloqueada":   {"fondo": (40, 40, 40),  "borde": (80, 80, 80),   "texto": (110, 110, 110)},
+        }
+
+        for i, (id_hab, datos) in enumerate(estado_habs.items()):
+            col = i % COLS
+            fila = i // COLS
+            cx = START_X + col * (CARD_W + 10)
+            cy = START_Y + fila * (CARD_H + 10)
+            rect = pygame.Rect(cx, cy, CARD_W, CARD_H)
+            self.rects_habilidades[id_hab] = rect
+
+            est = datos["estado"]
+            col_est = COLORES[est]
+
+            pygame.draw.rect(self.pantalla, col_est["fondo"], rect, border_radius=6)
+            pygame.draw.rect(self.pantalla, col_est["borde"], rect, 2, border_radius=6)
+
+            # Nombre
+            txt_nom = self.fuente.render(datos["nombre"], True, col_est["texto"])
+            self.pantalla.blit(txt_nom, (cx + 6, cy + 6))
+
+            # Costo
+            costo_str = f"Costo: {datos['costo']} oro" if datos["costo"] > 0 else "Costo: GRATIS"
+            txt_cos = self.fuente.render(costo_str, True, (200, 180, 80))
+            self.pantalla.blit(txt_cos, (cx + 6, cy + 24))
+
+            # Requisito
+            req = datos.get("requiere")
+            if req:
+                req_nombre = estado_habs[req]["nombre"] if req in estado_habs else req
+                txt_req = self.fuente.render(f"Req: {req_nombre}", True, (160, 130, 80))
+                self.pantalla.blit(txt_req, (cx + 6, cy + 41))
+
+            # Estado badge
+            badge = {"activa": "✓ ACTIVA", "disponible": "Clic para comprar",
+                     "bloqueada": "🔒 Bloqueada"}[est]
+            txt_badge = self.fuente.render(badge, True, col_est["borde"])
+            self.pantalla.blit(txt_badge, (cx + 6, cy + 54))
 
     def _dibujar_hud(self):
         txt_oro = self.fuente_grande.render(f"Oro: {int(self.oro)}", True, (255, 215, 0))

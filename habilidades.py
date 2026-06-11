@@ -17,22 +17,22 @@ ARBOLES = {
             "nombre": "Algoritmo eficiente",
             "costo": 100,
             "requiere": None,
-            # dano de las unidades +20%
-            "efecto": lambda juego: setattr(juego, "mod_danno", 1.20),
+            # +20% daño a las tropas aliadas YA existentes y futuras (via mod_danno_sistemas)
+            "efecto": lambda juego: _buff_danno_tropas(juego, 1.20),
         },
         "compilador": {
             "nombre": "Compilador",
             "costo": 500,
             "requiere": "algoritmo_eficiente",
-            # +30% velocidad
+            # +20% velocidad de entrenamiento
             "efecto": lambda juego: setattr(juego, "mod_entrena", 1.20),
         },
         "base_de_datos": {
             "nombre": "Base de Datos",
             "costo": 1000,
             "requiere": "compilador",
-            # habilita bases de datos
-            "efecto": lambda juego: setattr(juego, "mod_base_datos", True),
+            # Desbloquea el edificio BaseDatos en el menú de construcción
+            "efecto": lambda juego: juego._desbloquear_edificio_exclusivo(),
         },
     },
     "civil": {
@@ -40,21 +40,21 @@ ARBOLES = {
             "nombre": "Torreta de Cemento",
             "costo": 120,
             "requiere": None,
-            # habilita la torreta de cemento
-            "efecto": lambda juego: setattr(juego, "mod_torreta_cemento", True),
+            # Desbloquea la Torreta en el menú de construcción
+            "efecto": lambda juego: juego._desbloquear_edificio_exclusivo(),
         },
         "reforzamiento": {
             "nombre": "Reforzamiento",
             "costo": 500,
             "requiere": "torreta_cemento",
-            # hace que las unidades tengan 1.5 veces mas vida
+            # +50% vida a tropas aliadas existentes y futuras
             "efecto": lambda juego: _buff_vida_tropas(juego, 1.5),
         },
         "planificacion_urbana": {
             "nombre": "Planificacion Urbana",
             "costo": 300,
             "requiere": "reforzamiento",
-            # aumenta en 1.3 veces la vida de todas las estructuras
+            # +30% vida a todas las estructuras (aplica multiplicador global)
             "efecto": lambda juego: setattr(juego, "mod_planificacion_urbana", 1.3),
         },
     },
@@ -63,21 +63,21 @@ ARBOLES = {
             "nombre": "Minas Mejoradas",
             "costo": 0,
             "requiere": None,
-            # hace que las minas produzcan mas oro
+            # Minas producen 20% más oro
             "efecto": lambda juego: setattr(juego, "mod_mejor_mina", 1.2),
         },
         "linea_ensamblaje": {
             "nombre": "Linea de Ensamblaje",
             "costo": 250,
             "requiere": "mejor_mina",
-            # hace que las estructuras tarden menos en hacerse
-            "efecto": lambda juego: setattr(juego, "mod_linea_ensamblaje", 0.8),
+            # Desbloquea MinaMejorada + estructuras tardan 20% menos en construirse
+            "efecto": lambda juego: (_aplicar_linea_ensamblaje(juego)),
         },
         "manufactura": {
             "nombre": "Manufactura",
             "costo": 1100,
             "requiere": "linea_ensamblaje",
-            # hace que las unidades se produzcan el doble de rapido
+            # Unidades se producen el doble de rápido
             "efecto": lambda juego: setattr(juego, "mod_manufactura", 2.0),
         },
     },
@@ -86,32 +86,69 @@ ARBOLES = {
             "nombre": "Antena Amplificadora",
             "costo": 200,
             "requiere": None,
-            # hace que las unidades ataquen con 3 veces mas rango
-            "efecto": lambda juego: setattr(juego, "mod_antena_amplificadora", 3.0),
+            # Triplica el rango de ataque de tropas aliadas
+            "efecto": lambda juego: _buff_rango_tropas(juego, 3.0),
         },
         "banda_ancha": {
             "nombre": "Banda Ancha",
             "costo": 350,
             "requiere": "antena_amplificadora",
-            # aumenta la velocidad de movimiento en las tropas x1.5
-            "efecto": lambda juego: setattr(juego, "mod_banda_ancha", 1.5)
+            # +50% velocidad de movimiento a tropas aliadas
+            "efecto": lambda juego: _buff_velocidad_tropas(juego, 1.5),
         },
         "antena_suprema": {
             "nombre": "Antena Suprema",
             "costo": 300,
             "requiere": "banda_ancha",
-            # invalida la produccion de recursos del enemigo por unos segundos
-            "efecto": lambda juego: setattr(juego, "timer_antena_suprema", 600),
+            # Desbloquea Antena + pausa producción enemiga por 10 segundos (600 frames)
+            "efecto": lambda juego: (_aplicar_antena_suprema(juego)),
         },
     },
 }
 
 
 def _buff_vida_tropas(juego, multiplicador):
-    """Aplica aumento de vida a todas las tropas existentes y futuras."""
+    """Aplica aumento de vida SOLO a tropas aliadas existentes y guarda el mod para las futuras."""
     for unidad in juego.mis_unidades:
-        unidad.vida = int(unidad.vida * multiplicador)
+        if unidad.faccion == juego.faccion:
+            unidad.vida = int(unidad.vida * multiplicador)
     juego.mod_vida_tropas = multiplicador
+
+
+def _buff_danno_tropas(juego, multiplicador):
+    """Aplica aumento de daño SOLO a tropas aliadas existentes y guarda el mod para las futuras."""
+    for unidad in juego.mis_unidades:
+        if unidad.faccion == juego.faccion:
+            unidad.dano = int(unidad.dano * multiplicador)
+    juego.mod_danno = multiplicador
+
+
+def _buff_rango_tropas(juego, multiplicador):
+    """Amplía el rango de ataque SOLO a tropas aliadas existentes y guarda el mod para las futuras."""
+    for unidad in juego.mis_unidades:
+        if unidad.faccion == juego.faccion:
+            unidad.rango_ataque = int(unidad.rango_ataque * multiplicador)
+    juego.mod_antena_amplificadora = multiplicador
+
+
+def _buff_velocidad_tropas(juego, multiplicador):
+    """Aumenta la velocidad de movimiento SOLO a tropas aliadas existentes y guarda el mod."""
+    for unidad in juego.mis_unidades:
+        if unidad.faccion == juego.faccion:
+            unidad.velocidad = unidad.velocidad * multiplicador
+    juego.mod_banda_ancha = multiplicador
+
+
+def _aplicar_linea_ensamblaje(juego):
+    """Activa el modificador de construcción más rápida y desbloquea la MinaMejorada."""
+    juego.mod_linea_ensamblaje = 0.8
+    juego._desbloquear_edificio_exclusivo()
+
+
+def _aplicar_antena_suprema(juego):
+    """Desbloquea la Antena y activa el timer de bloqueo de producción enemiga."""
+    juego._desbloquear_edificio_exclusivo()
+    juego.timer_antena_suprema = 600
 
 
 # ------------------------------------------------------------------

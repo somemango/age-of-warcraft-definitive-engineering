@@ -18,8 +18,12 @@ class Estructura:
         self.nivel = 1
 
     def recibir_construccion(self, cantidad):
-        """Suma progreso de construcción. Acepta modificadores externos."""
-        self.progreso = min(100, self.progreso + cantidad)
+        """Suma progreso de construcción. Aplica mod_linea_ensamblaje si corresponde."""
+        juego = getattr(self, "_juego", None)
+        mod = 1.0
+        if juego is not None and self.faccion == juego.faccion:
+            mod = 1.0 / getattr(juego, "mod_linea_ensamblaje", 1.0)
+        self.progreso = min(100, self.progreso + cantidad * mod)
         if self.progreso >= 100:
             self.construida = True
             self.al_construirse()
@@ -29,8 +33,8 @@ class Estructura:
         pass
 
     def actualizar(self, juego):
-        """Lógica por frame una vez construida. Subclases lo sobrescriben."""
-        pass
+        """Lógica por frame una vez construida. Guarda referencia al juego y subclases lo sobrescriben."""
+        self._juego = juego  # disponible para recibir_construccion
 
     def dibujar(self, pantalla, fuente):
         # Cuerpo del edificio
@@ -78,16 +82,27 @@ class Cuartel(Estructura):
         if not self.construida or not self.cola:
             return
 
-        # Aplica modificador de habilidad si existe
-        mod = getattr(juego, "mod_entrena", 1.0)
-        self.timer_entrenamiento += mod
+        # mod_entrena: velocidad base de entrenamiento (Compilador/BaseDatos)
+        # mod_manufactura: duplica la velocidad de entrenamiento (Manufactura industrial)
+        mod_entrena = getattr(juego, "mod_entrena", 1.0)
+        mod_manufactura = getattr(juego, "mod_manufactura", 1.0)
+        self.timer_entrenamiento += mod_entrena * mod_manufactura
 
         if self.timer_entrenamiento >= self.tiempo_entrenamiento:
             self.timer_entrenamiento = 0
             self.cola.pop(0)
-            # Genera la tropa cerca del cuartel
             from unidades import Tropa
-            nueva = Tropa(self.x + 40, self.y, self.faccion, 100, (0, 255, 0))
+            color = (0, 200, 80) if self.faccion != "enemigo" else (255, 60, 60)
+            nueva = Tropa(self.x + 40, self.y, self.faccion, 100, color)
+
+            # Solo aplicar mods de habilidades a tropas de la facción del jugador
+            if self.faccion == juego.faccion:
+                nueva.dano = int(nueva.dano * getattr(juego, "mod_danno", 1.0))
+                nueva.vida = int(nueva.vida * getattr(juego, "mod_vida_tropas", 1.0))
+                nueva.velocidad *= getattr(juego, "mod_banda_ancha", 1.0)
+                nueva.rango_ataque = int(
+                    nueva.rango_ataque * getattr(juego, "mod_antena_amplificadora", 1.0))
+
             juego.mis_unidades.append(nueva)
 
 
@@ -103,8 +118,7 @@ class Mina(Estructura):
     def actualizar(self, juego):
         if not self.construida:
             return
-        # Aplica modificador de habilidad si existe
-        mod = getattr(juego, "mod_oro", 1.0)
+        mod = getattr(juego, "mod_mejor_mina", 1.0)
         juego.oro += self.oro_por_frame * mod
 
 
@@ -325,8 +339,8 @@ class MinaMejorada(Estructura):
         if not self.construida:
             return
 
-        # Generar oro
-        mod = getattr(juego, "mod_oro", 1.0)
+        # Generar oro (beneficiada por Minas Mejoradas si es la facción industrial)
+        mod = getattr(juego, "mod_mejor_mina", 1.0)
         juego.oro += self.oro_por_frame * mod
 
         # Aplicar armadura a tropas aliadas cercanas (solo una vez por unidad)

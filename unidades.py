@@ -52,7 +52,7 @@ class Tropa:
             distancia = pygame.math.Vector2(self.x - self.objetivo.x, self.y - self.objetivo.y).length()
             if distancia <= self.radio + 35:
                 self.estado = "quieto"
-                self.objetivo.recibir_construccion(self.velocidad_construccion)
+                self.objetivo.recibir_construccion(self.velocidad_construccion, juego=None)
                 if self.objetivo.construida:
                     self.tarea = None
                     self.objetivo = None
@@ -73,7 +73,9 @@ class Tropa:
                     self.movimiento(todas_las_unidades)
                 else:
                     if self.timer_ataque == 0:
-                        self.objetivo_combate.vida -= self.dano
+                        reduccion = getattr(self.objetivo_combate, "dano_reduccion", 0)
+                        dano_real = max(1, self.dano - reduccion)
+                        self.objetivo_combate.vida -= dano_real
                         self.timer_ataque = self.cooldown_ataque
             else:
                 # Objetivo muerto: limpiar y retornar pasivo
@@ -191,19 +193,33 @@ class Generador:
             self.y + math.sin(angulo) * self.SPAWN_OFFSET,
         )
 
-    def actualizar(self, lista_unidades):
+    def actualizar(self, lista_unidades, juego=None):
         if self.vida <= 0:
-            return                      
+            return
+
+        # Antena Suprema: bloquea la producción del generador enemigo
+        if juego is not None and self.faccion != juego.faccion:
+            if getattr(juego, "timer_antena_suprema", 0) > 0:
+                juego.timer_antena_suprema -= 1
+                return  # producción enemiga bloqueada este frame
 
         tiempo_actual = time.time()
         unidades_faccion = [u for u in lista_unidades if u.faccion == self.faccion]
 
-        if len(unidades_faccion) < 8: # Aumentado ligeramente para soportar las oleadas escaladas
+        if len(unidades_faccion) < 8:
             if tiempo_actual - self.ultimo_spawn >= self.cooldown:
-                color_tropa = self.color
                 sx, sy = self._punto_spawn()
-                nueva_tropa = Tropa(sx, sy, self.faccion, 100, color_tropa)
-                nueva_tropa.dano = self.dano_unidades # Hereda el daño configurado actual de la IA
+                nueva_tropa = Tropa(sx, sy, self.faccion, 100, self.color)
+                nueva_tropa.dano = self.dano_unidades
+
+                # Aplicar mods de habilidades a tropas aliadas recién generadas
+                if juego is not None and self.faccion == juego.faccion:
+                    nueva_tropa.dano = int(nueva_tropa.dano * getattr(juego, "mod_danno", 1.0))
+                    nueva_tropa.vida = int(nueva_tropa.vida * getattr(juego, "mod_vida_tropas", 1.0))
+                    nueva_tropa.velocidad *= getattr(juego, "mod_banda_ancha", 1.0)
+                    nueva_tropa.rango_ataque = int(
+                        nueva_tropa.rango_ataque * getattr(juego, "mod_antena_amplificadora", 1.0))
+
                 nueva_tropa.destinoX = sx
                 nueva_tropa.destinoY = sy
                 lista_unidades.append(nueva_tropa)
