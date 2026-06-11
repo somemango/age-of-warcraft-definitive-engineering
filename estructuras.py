@@ -2,6 +2,50 @@ import pygame
 import time
 import random
 import math
+import os
+
+# ── Carga de sprites compartidos ──────────────────────────────────────────────
+_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def _cargar_sprite(nombre_archivo, tamanio):
+    """Carga un sprite y lo escala. Soporta RGB y RGBA."""
+    ruta = os.path.join(_DIR, nombre_archivo)
+    if not os.path.exists(ruta):
+        return None
+    img = pygame.image.load(ruta)
+    # Imágenes RGB (sin alpha) -> convertir a superficie RGBA limpia
+    if img.get_bitsize() < 32:
+        img = img.convert()
+        rgba = pygame.Surface(img.get_size(), pygame.SRCALPHA)
+        rgba.blit(img, (0, 0))
+        img = rgba
+    else:
+        img = img.convert_alpha()
+    return pygame.transform.scale(img, tamanio)
+
+def _aplicar_tinte(sprite_base, color_rgb, alpha=110):
+    """Devuelve copia del sprite con tinte de color, sin modificar el original."""
+    copia = sprite_base.copy()
+    tinte = pygame.Surface(copia.get_size(), pygame.SRCALPHA)
+    tinte.fill((*color_rgb, alpha))
+    copia.blit(tinte, (0, 0))
+    return copia
+
+_SPRITE_MINA = None
+_SPRITE_CUARTEL = None
+
+def _get_sprite_mina():
+    global _SPRITE_MINA
+    if _SPRITE_MINA is None:
+        _SPRITE_MINA = _cargar_sprite("mina.png", (70, 70))
+    return _SPRITE_MINA
+
+def _get_sprite_cuartel():
+    global _SPRITE_CUARTEL
+    if _SPRITE_CUARTEL is None:
+        _SPRITE_CUARTEL = _cargar_sprite("estructura_si1.png", (70, 70))
+    return _SPRITE_CUARTEL
+# ──────────────────────────────────────────────────────────────────────────────
 
 class Estructura:
     COLOR_BARRA = (80, 180, 80)
@@ -36,6 +80,27 @@ class Estructura:
     def actualizar(self, juego):
         pass
 
+    def _dibujar_barras(self, pantalla):
+        if not self.construida:
+            pygame.draw.rect(pantalla, self.COLOR_BARRA_FONDO, (self.x - 35, self.y - 48, 70, 6))
+            pygame.draw.rect(pantalla, (240, 200, 40), (self.x - 35, self.y - 48, int(70 * (self.progreso / 100.0)), 6))
+        elif self.vida < self.vida_maxima:
+            pygame.draw.rect(pantalla, self.COLOR_BARRA_FONDO, (self.x - 35, self.y - 48, 70, 6))
+            pygame.draw.rect(pantalla, (230, 40, 40), (self.x - 35, self.y - 48, int(70 * (self.vida / self.vida_maxima)), 6))
+
+    def _dibujar_sprite(self, pantalla, sprite):
+        """Dibuja un sprite aplicando tinte enemigo y transparencia si está en construcción."""
+        if self.faccion == "enemigo":
+            sprite_render = _aplicar_tinte(sprite, (220, 60, 60))
+        else:
+            sprite_render = sprite
+
+        if not self.construida:
+            sprite_render = sprite_render.copy()
+            sprite_render.set_alpha(140)
+
+        pantalla.blit(sprite_render, (self.x - 35, self.y - 35))
+
     def dibujar(self, pantalla, fuente):
         color_render = self.COLOR_EDIFICIO if self.construida else (110, 110, 150)
         if self.faccion == "enemigo":
@@ -48,18 +113,22 @@ class Estructura:
         txt = fuente.render(nombre, True, (240, 240, 240))
         pantalla.blit(txt, (self.x - txt.get_width() // 2, self.y - txt.get_height() // 2))
 
-        if not self.construida:
-            pygame.draw.rect(pantalla, self.COLOR_BARRA_FONDO, (self.x - 35, self.y - 48, 70, 6))
-            pygame.draw.rect(pantalla, (240, 200, 40), (self.x - 35, self.y - 48, int(70 * (self.progreso / 100.0)), 6))
-        elif self.vida < self.vida_maxima:
-            pygame.draw.rect(pantalla, self.COLOR_BARRA_FONDO, (self.x - 35, self.y - 48, 70, 6))
-            pygame.draw.rect(pantalla, (230, 40, 40), (self.x - 35, self.y - 48, int(70 * (self.vida / self.vida_maxima)), 6))
+        self._dibujar_barras(pantalla)
 
 class Cuartel(Estructura):
     def __init__(self, x, y, faccion): 
         super().__init__(x, y, faccion, 150)
         self.ultimo_spawn = time.time()
         self.cooldown_spawn = 12.0 
+
+    def dibujar(self, pantalla, fuente):
+        sprite = _get_sprite_cuartel()
+        if sprite:
+            self._dibujar_sprite(pantalla, sprite)
+        else:
+            super().dibujar(pantalla, fuente)
+            return
+        self._dibujar_barras(pantalla)
 
     def actualizar(self, juego):
         if not self.construida: return
@@ -82,6 +151,15 @@ class Mina(Estructura):
     def __init__(self, x, y, faccion):
         super().__init__(x, y, faccion, 100)
         self._last_tick = time.time()
+
+    def dibujar(self, pantalla, fuente):
+        sprite = _get_sprite_mina()
+        if sprite:
+            self._dibujar_sprite(pantalla, sprite)
+        else:
+            super().dibujar(pantalla, fuente)
+            return
+        self._dibujar_barras(pantalla)
 
     def actualizar(self, juego):
         if not self.construida: return

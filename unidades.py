@@ -2,6 +2,46 @@ import pygame
 import time
 import math
 import random
+import os
+
+# ------------------------------------------------------------------
+# Caché de sprites por facción — se carga una sola vez
+# ------------------------------------------------------------------
+_SPRITE_CACHE: dict = {}
+
+def _cargar_sprite(faccion: str, radio: int) -> pygame.Surface | None:
+    """Devuelve el sprite escalado de la facción, o None si no existe el archivo."""
+    key = (faccion, radio)
+    if key in _SPRITE_CACHE:
+        return _SPRITE_CACHE[key]
+
+    # Mapeo facción → nombre de archivo (todos en la misma carpeta que unidades.py)
+    ARCHIVOS = {
+        "sistemas":          "sistemas.png",
+        "civil":             "civil.png",
+        "telecomunicaciones":"telecom.png",
+        "industrial":        "industrial.png",
+    }
+    nombre = ARCHIVOS.get(faccion)
+    if nombre is None:
+        _SPRITE_CACHE[key] = None
+        return None
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    ruta = os.path.join(base_dir, nombre)
+    if not os.path.exists(ruta):
+        _SPRITE_CACHE[key] = None
+        return None
+
+    try:
+        img = pygame.image.load(ruta).convert_alpha()
+        tam = radio * 2
+        img = pygame.transform.scale(img, (tam, tam))
+        _SPRITE_CACHE[key] = img
+    except Exception:
+        _SPRITE_CACHE[key] = None
+
+    return _SPRITE_CACHE[key]
 
 class Tropa:
     def __init__(self, x, y, faccion, vida, color):
@@ -94,21 +134,27 @@ class Tropa:
     def dibujar(self, pantalla, fuente=None, cam_x=0, cam_y=0):
         if self.vida <= 0: return
         pos_x, pos_y = int(self.x - cam_x), int(self.y - cam_y)
-        
-        # Dibujar la unidad (círculo)
-        pygame.draw.circle(pantalla, self.color, (pos_x, pos_y), self.radio)
-        
-      
-        ancho_barra = 30
-        x_barra = pos_x - (ancho_barra // 2)
-        y_barra = pos_y - 25 # Posición sobre la unidad
-        
-        
+
+        sprite = _cargar_sprite(self.faccion, self.radio)
+        if sprite:
+            # Dibujar sprite centrado en la posición de la unidad
+            pantalla.blit(sprite, (pos_x - self.radio, pos_y - self.radio))
+        else:
+            # Fallback: círculo de color si no hay sprite
+            pygame.draw.circle(pantalla, self.color, (pos_x, pos_y), self.radio)
+
+        # Aro de selección encima del sprite
+        if self.seleccionada:
+            pygame.draw.circle(pantalla, (255, 255, 255), (pos_x, pos_y), self.radio + 3, 2)
+
+        # Barra de vida
+        ancho_barra = self.radio * 2
+        x_barra = pos_x - self.radio
+        y_barra = pos_y - self.radio - 8
         pygame.draw.rect(pantalla, (60, 60, 60), (x_barra, y_barra, ancho_barra, 5))
-        
-       
-        proporcion = max(0, min(1, self.vida / 100.0))
-        pygame.draw.rect(pantalla, (220, 50, 50), (x_barra, y_barra, int(ancho_barra * proporcion), 5))
+        proporcion = max(0.0, min(1.0, self.vida / 100.0))
+        color_vida = (int(220 * (1 - proporcion)), int(200 * proporcion), 30)
+        pygame.draw.rect(pantalla, color_vida, (x_barra, y_barra, int(ancho_barra * proporcion), 5))
 
 class Obrero(Tropa):
     def __init__(self, x, y, faccion):
@@ -188,8 +234,25 @@ class Constructor(Tropa):
         if self.vida <= 0: return
         pos_x = int(self.x - cam_x)
         pos_y = int(self.y - cam_y)
-        pygame.draw.circle(pantalla, self.color, (pos_x, pos_y), self.radio)
-        pygame.draw.circle(pantalla, (255, 255, 255), (pos_x, pos_y), self.radio - 4, 1)
+
+        sprite = _cargar_sprite(self.faccion, self.radio)
+        if sprite:
+            pantalla.blit(sprite, (pos_x - self.radio, pos_y - self.radio))
+        else:
+            pygame.draw.circle(pantalla, self.color, (pos_x, pos_y), self.radio)
+
+        # Aro de selección
+        if self.seleccionada:
+            pygame.draw.circle(pantalla, (255, 255, 255), (pos_x, pos_y), self.radio + 2, 2)
+
+        # Barra de vida
+        ancho_barra = self.radio * 2
+        x_barra = pos_x - self.radio
+        y_barra = pos_y - self.radio - 8
+        pygame.draw.rect(pantalla, (60, 60, 60), (x_barra, y_barra, ancho_barra, 5))
+        proporcion = max(0.0, min(1.0, self.vida / 50.0))
+        color_vida = (int(220 * (1 - proporcion)), int(200 * proporcion), 30)
+        pygame.draw.rect(pantalla, color_vida, (x_barra, y_barra, int(ancho_barra * proporcion), 5))
 
 class Generador:
     def __init__(self, x, y, faccion, color, tiempo_generacion_segundos=6, dano_unidades=10):

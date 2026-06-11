@@ -38,17 +38,18 @@ class Juego:
         self.edificio_fantasma = None  
 
         self.ancho_mapa = 1600  
-        self.alto_mapa = 1200   
+        self.alto_mapa = 1200  
         self.camara_x = 0       
         self.camara_y = 0       
 
-        self.fondo_visual = pygame.Surface((self.ancho_mapa, self.alto_mapa))
-        self.fondo_visual.fill((34, 139, 34)) 
-        
-        for x in range(0, self.ancho_mapa, 100):
-            pygame.draw.line(self.fondo_visual, (45, 150, 45), (x, 0), (x, self.alto_mapa), 2)
-        for y in range(0, self.alto_mapa, 100):
-            pygame.draw.line(self.fondo_visual, (45, 150, 45), (0, y), (self.ancho_mapa, y), 2)
+        import os as _os
+        _ruta_mapa = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mapa.png")
+        if _os.path.exists(_ruta_mapa):
+            _img_mapa = pygame.image.load(_ruta_mapa).convert()
+            self.fondo_visual = pygame.transform.scale(_img_mapa, (self.ancho_mapa, self.alto_mapa))
+        else:
+            self.fondo_visual = pygame.Surface((self.ancho_mapa, self.alto_mapa))
+            self.fondo_visual.fill((34, 139, 34))
 
         self.ultimo_destino_x = 100
         self.ultimo_destino_y = 100
@@ -113,6 +114,16 @@ class Juego:
         self.fuente = pygame.font.SysFont(None, 20)
         self.fuente_grande = pygame.font.SysFont(None, 28)
         self.last_economy_tick = time.time()
+
+        # ── Sprite icono de oro (HUD) ──────────────────────────────────────
+        import os as _os2
+        _ruta_oro = _os2.path.join(_os2.path.dirname(_os2.path.abspath(__file__)), "oro.png")
+        if _os2.path.exists(_ruta_oro):
+            _img_oro = pygame.image.load(_ruta_oro).convert_alpha()
+            self.icono_oro = pygame.transform.scale(_img_oro, (22, 22))
+        else:
+            self.icono_oro = None
+        # ──────────────────────────────────────────────────────────────────
 
     def actualizar_camara(self):
         mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -442,7 +453,11 @@ class Juego:
             self.last_economy_tick = ahora
 
         txt_oro = self.fuente_grande.render(f"Oro: {int(self.oro)}  |  Oro Enemigo: {int(self.oro_enemigo)}", True, (255, 215, 0))
-        self.pantalla.blit(txt_oro, (20, 20))
+        if self.icono_oro:
+            self.pantalla.blit(self.icono_oro, (20, 18))
+            self.pantalla.blit(txt_oro, (46, 20))
+        else:
+            self.pantalla.blit(txt_oro, (20, 20))
 
         if self.edificio_fantasma:
             txt_aviso = self.fuente.render(f"Colocando: {self.edificio_fantasma} (ESC para cancelar)", True, (255, 255, 255))
