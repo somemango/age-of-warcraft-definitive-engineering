@@ -27,6 +27,7 @@ juego = None
 run = True
 
 # --- Bucle Principal en main.py ---
+# --- Bucle Principal en main.py ---
 while run:
     eventos = pygame.event.get()
     for event in eventos:

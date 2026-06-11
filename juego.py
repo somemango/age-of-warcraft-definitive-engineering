@@ -36,6 +36,9 @@ class Juego:
         self.estructuras = []
         self.mostrar_menu_construccion = False
 
+        self.habilidades = ArbolHabilidades(self.faccion, self)
+        self.mostrar_menu_habilidades = False
+        self.rects_habilidades = {}
         # =========================================================================
         # 🎥 CONFIGURACIÓN DE CÁMARA Y MAPA GIGANTE PROVISIONAL
         # =========================================================================
